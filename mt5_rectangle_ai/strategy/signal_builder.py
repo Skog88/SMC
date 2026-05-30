@@ -7,6 +7,7 @@ from typing import Any
 
 from core.candle_builder import Candle
 from core.htf_engine import HTFBias
+from core.sessions import KillZoneResult
 from strategy.liquidity_detector import LiquidityTag
 from strategy.m1_flip import M1FlipResult
 from strategy.rectangle import Rectangle
@@ -28,6 +29,7 @@ def build_setup_object(
     ob: OrderBlock | None = None,
     ob_rectangle_overlap: bool = False,
     liq_tag: LiquidityTag | None = None,
+    kz_result: KillZoneResult | None = None,
 ) -> dict[str, Any]:
     if structure.marked_level is None:
         raise ValueError("cannot build setup object without marked level")
@@ -83,6 +85,10 @@ def build_setup_object(
         "liquidity": {
             "swept_level_type": liq_tag.swept_level_type if liq_tag else "single_swing",
             "liquidity_pool_touches": liq_tag.liquidity_pool_touches if liq_tag else 1,
+        },
+        "kill_zone": {
+            "in_kill_zone": kz_result.in_kill_zone if kz_result else False,
+            "kill_zone_name": kz_result.kill_zone_name if kz_result else "none",
         },
         "status": "RECTANGLE_ACTIVE",
     }

@@ -12,6 +12,7 @@ from ai.vision_client import ask_claude_vision
 from core.candle_builder import Candle
 from core.chart_renderer import render_sweep_chart
 from core.htf_engine import HTFBias, HTFConfig, detect_htf_bias
+from core.sessions import KillZoneConfig, KillZoneResult, is_kill_zone
 from strategy import skip_reasons as reasons
 from strategy.liquidity_detector import LiquidityConfig, LiquidityTag, classify_swept_level
 from strategy.m1_flip import M1FlipConfig, detect_m1_flip
@@ -36,6 +37,7 @@ class RuleEngineConfig:
     htf_config: HTFConfig = field(default_factory=HTFConfig)
     ob_config: OrderBlockConfig = field(default_factory=OrderBlockConfig)
     liq_config: LiquidityConfig = field(default_factory=LiquidityConfig)
+    kz_config: KillZoneConfig = field(default_factory=KillZoneConfig)
     ai_model: str = "claude-sonnet-4-6"
     ai_min_confidence: int = 60
     sl_buffer_points: float = 5.0
@@ -123,6 +125,12 @@ class SymbolRuleState:
                     continue
             # OB is always logged even if filter is off
 
+            # ── Kill zone check (Phase 4) ────────────────────────────────────
+            kz_result = is_kill_zone(trigger.time, self.config.kz_config)
+            if self.config.kz_config.hard_filter and not kz_result.in_kill_zone:
+                last_skip = reasons.SKIP_OUTSIDE_KILL_ZONE
+                continue
+
             rectangle = build_rectangle(trigger, direction, self.point, self.config.rectangle)
             if not rectangle.valid:
                 return RuleDecision(reasons.NO_SETUP, skip_reason=rectangle.skip_reason)
@@ -150,7 +158,7 @@ class SymbolRuleState:
 
             setup = build_setup_object(
                 self.symbol, structure, sweep, rectangle, vision_review,
-                htf_bias, ob, ob_rectangle_overlap, liq_tag,
+                htf_bias, ob, ob_rectangle_overlap, liq_tag, kz_result,
             )
             self.state = "RECTANGLE_ACTIVE"
             self.active_setup = setup

@@ -7,8 +7,10 @@ from pathlib import Path
 import yaml
 
 from core.htf_engine import HTFConfig
+from core.sessions import KillZoneConfig
 from core.symbol_config import get_symbol_setting
 from strategy.liquidity_detector import LiquidityConfig
+from strategy.session_levels import SessionWindow
 from strategy.m1_flip import M1FlipConfig
 from strategy.rectangle import RectangleConfig
 from strategy.state_machine import RuleEngineConfig
@@ -56,6 +58,24 @@ def load_rule_engine_config(symbol: str, config_path: Path | None = None) -> Rul
         entry_mode=str(m1_raw.get("entry_mode", "market_after_close")),
     )
 
+    def _parse_time(s: str):
+        from datetime import time as _time
+        h, m = s.split(":")
+        return _time(int(h), int(m))
+
+    kz_raw = raw.get("kill_zones", {})
+    kz_windows = []
+    for name in ("london_open", "new_york_open", "london_close"):
+        w = kz_raw.get(name, {})
+        if w:
+            kz_windows.append(SessionWindow(name, _parse_time(str(w["start"])), _parse_time(str(w["end"]))))
+    kz_config = KillZoneConfig(
+        windows=tuple(kz_windows) if kz_windows else KillZoneConfig().windows,
+        enabled=bool(kz_raw.get("enabled", True)),
+        hard_filter=bool(kz_raw.get("hard_filter", False)),
+        timezone=str(raw.get("system", {}).get("timezone", "Europe/Oslo")),
+    )
+
     liq_raw = raw.get("liquidity", {})
     liq_config = LiquidityConfig(
         equal_level_buffer_points=_resolve(liq_raw.get("equal_level_buffer_points", 5), symbol),
@@ -95,6 +115,7 @@ def load_rule_engine_config(symbol: str, config_path: Path | None = None) -> Rul
         htf_config=htf_config,
         ob_config=ob_config,
         liq_config=liq_config,
+        kz_config=kz_config,
         ai_model=ai_model,
         ai_min_confidence=min_confidence,
         sl_buffer_points=sl_buffer,

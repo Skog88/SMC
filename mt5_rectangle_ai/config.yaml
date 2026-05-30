@@ -19,6 +19,19 @@ htf:
   max_bos_age_candles: 50
   require_confirmed_bos: true
 
+kill_zones:
+  london_open:
+    start: "08:00"
+    end: "10:00"
+  new_york_open:
+    start: "13:30"
+    end: "15:30"
+  london_close:
+    start: "15:00"
+    end: "16:00"
+  enabled: true
+  hard_filter: false
+
 liquidity:
   equal_level_buffer_points:
     default: 5

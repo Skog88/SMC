@@ -80,6 +80,9 @@ CREATE TABLE IF NOT EXISTS setups (
     htf_last_swing_low REAL,
     htf_swing_midpoint REAL,
 
+    in_kill_zone INTEGER,
+    kill_zone_name TEXT,
+
     swept_level_type TEXT,
     liquidity_pool_touches INTEGER,
 
