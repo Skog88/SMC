@@ -13,6 +13,7 @@ from core.candle_builder import Candle
 from core.chart_renderer import render_sweep_chart
 from core.htf_engine import HTFBias, HTFConfig, detect_htf_bias
 from strategy import skip_reasons as reasons
+from strategy.liquidity_detector import LiquidityConfig, LiquidityTag, classify_swept_level
 from strategy.m1_flip import M1FlipConfig, detect_m1_flip
 from strategy.rectangle import RectangleConfig, build_rectangle
 from strategy.signal_builder import build_entry_signal, build_setup_object
@@ -34,6 +35,7 @@ class RuleEngineConfig:
     m1_flip: M1FlipConfig = field(default_factory=M1FlipConfig)
     htf_config: HTFConfig = field(default_factory=HTFConfig)
     ob_config: OrderBlockConfig = field(default_factory=OrderBlockConfig)
+    liq_config: LiquidityConfig = field(default_factory=LiquidityConfig)
     ai_model: str = "claude-sonnet-4-6"
     ai_min_confidence: int = 60
     sl_buffer_points: float = 5.0
@@ -107,6 +109,12 @@ class SymbolRuleState:
                 last_skip = sweep.skip_reason
                 continue
 
+            # ── Liquidity pool classification (Phase 3) — logging only ────────
+            liq_tag = classify_swept_level(
+                m15_candles, structure.marked_level.price, direction,
+                self.point, self.config.liq_config,
+            )
+
             # ── Order Block check (Phase 2) ───────────────────────────────────
             ob = identify_order_block(m15_candles, direction, self.point, self.config.ob_config)
             if not ob.ob_valid:
@@ -142,7 +150,7 @@ class SymbolRuleState:
 
             setup = build_setup_object(
                 self.symbol, structure, sweep, rectangle, vision_review,
-                htf_bias, ob, ob_rectangle_overlap,
+                htf_bias, ob, ob_rectangle_overlap, liq_tag,
             )
             self.state = "RECTANGLE_ACTIVE"
             self.active_setup = setup

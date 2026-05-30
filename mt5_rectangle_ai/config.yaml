@@ -19,6 +19,15 @@ htf:
   max_bos_age_candles: 50
   require_confirmed_bos: true
 
+liquidity:
+  equal_level_buffer_points:
+    default: 5
+    forex: 5
+    metals: 100
+    indices: 200
+  min_touches: 2
+  lookback_candles: 60
+
 order_block:
   max_lookback_candles: 20
   require_ob: true

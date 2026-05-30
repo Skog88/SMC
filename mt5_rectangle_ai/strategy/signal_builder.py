@@ -7,6 +7,7 @@ from typing import Any
 
 from core.candle_builder import Candle
 from core.htf_engine import HTFBias
+from strategy.liquidity_detector import LiquidityTag
 from strategy.m1_flip import M1FlipResult
 from strategy.rectangle import Rectangle
 from strategy.structure_detector import OrderBlock, StructureResult
@@ -26,6 +27,7 @@ def build_setup_object(
     htf_bias: HTFBias | None = None,
     ob: OrderBlock | None = None,
     ob_rectangle_overlap: bool = False,
+    liq_tag: LiquidityTag | None = None,
 ) -> dict[str, Any]:
     if structure.marked_level is None:
         raise ValueError("cannot build setup object without marked level")
@@ -77,6 +79,10 @@ def build_setup_object(
             "ob_fvg_overlap": ob.ob_fvg_overlap if ob else False,
             "ob_valid": ob.ob_valid if ob else False,
             "ob_rectangle_overlap": ob_rectangle_overlap,
+        },
+        "liquidity": {
+            "swept_level_type": liq_tag.swept_level_type if liq_tag else "single_swing",
+            "liquidity_pool_touches": liq_tag.liquidity_pool_touches if liq_tag else 1,
         },
         "status": "RECTANGLE_ACTIVE",
     }

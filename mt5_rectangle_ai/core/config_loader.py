@@ -8,6 +8,7 @@ import yaml
 
 from core.htf_engine import HTFConfig
 from core.symbol_config import get_symbol_setting
+from strategy.liquidity_detector import LiquidityConfig
 from strategy.m1_flip import M1FlipConfig
 from strategy.rectangle import RectangleConfig
 from strategy.state_machine import RuleEngineConfig
@@ -55,6 +56,13 @@ def load_rule_engine_config(symbol: str, config_path: Path | None = None) -> Rul
         entry_mode=str(m1_raw.get("entry_mode", "market_after_close")),
     )
 
+    liq_raw = raw.get("liquidity", {})
+    liq_config = LiquidityConfig(
+        equal_level_buffer_points=_resolve(liq_raw.get("equal_level_buffer_points", 5), symbol),
+        min_touches=int(liq_raw.get("min_touches", 2)),
+        lookback_candles=int(liq_raw.get("lookback_candles", 60)),
+    )
+
     ob_raw = raw.get("order_block", {})
     ob_config = OrderBlockConfig(
         max_lookback_candles=int(ob_raw.get("max_lookback_candles", 20)),
@@ -86,6 +94,7 @@ def load_rule_engine_config(symbol: str, config_path: Path | None = None) -> Rul
         m1_flip=m1_flip,
         htf_config=htf_config,
         ob_config=ob_config,
+        liq_config=liq_config,
         ai_model=ai_model,
         ai_min_confidence=min_confidence,
         sl_buffer_points=sl_buffer,
