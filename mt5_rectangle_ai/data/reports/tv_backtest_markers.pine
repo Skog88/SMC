@@ -1,0 +1,86 @@
+//@version=6
+// Rectangle AI Backtest Markers - auto-generated, do not edit by hand
+// CSV timestamps are UTC; TradingView displays them in the chart timezone.
+indicator("Rectangle AI Backtest", overlay=true,
+          max_labels_count=500, max_lines_count=500, max_boxes_count=500)
+
+// ---- GBPUSD ----
+var gbpusd_sts = array.from(1776857400000, 1776867300000, 1776905100000, 1776944700000, 1776979800000, 1777250700000, 1777272300000, 1777275900000, 1777285800000, 1777315500000, 1777337100000, 1777363200000, 1777397400000, 1777413600000, 1777465800000, 1777481100000, 1777523400000, 1777528800000, 1777536000000, 1777541400000, 1777556700000, 1777572900000, 1777650300000, 1777871700000, 1777906800000, 1777932000000, 1777968900000, 1777993200000)
+var gbpusd_ets = array.from(1776858300000, 1776868200000, 1776906000000, 1776945780000, 1776980700000, 1777343940000, 1777274880000, 1777276920000, 1777288260000, 1777316400000, 1777346760000, 1777364100000, 1777399440000, 1777414500000, 1777466760000, 1777482420000, 1777524300000, 1777529700000, 1777536900000, 1777543320000, 1777557660000, 1777614900000, 1777651320000, 1777872600000, 1777907700000, 1777933380000, 1777969980000, 1777994100000)
+var gbpusd_xts = array.from(1776858420000, 1776903180000, 1776906660000, 1776955500000, 1776999420000, 1777345440000, 1777275240000, 1777277280000, 1777288920000, 1777323720000, 1777348200000, 1777366800000, 1777399800000, 1777419960000, 1777467060000, 1777482540000, 1777529460000, 1777530720000, 1777541400000, 1777544760000, 1777557720000, 1777617480000, 1777652580000, 1777873860000, 1777907880000, 1777939320000, 1777972620000, 1777995360000)
+var gbpusd_epx = array.from(1.35075, 1.35157, 1.35086, 1.35035, 1.3465, 1.35209, 1.35352, 1.35442, 1.35564, 1.35328, 1.35329, 1.35072, 1.35152, 1.35216, 1.35056, 1.34815, 1.34615, 1.3459, 1.3492, 1.3496, 1.35159, 1.35903, 1.3622, 1.35872, 1.35555, 1.35276, 1.35469, 1.35666)
+var gbpusd_sl = array.from(1.35053, 1.35246, 1.35102, 1.35133, 1.34589, 1.35235, 1.35393, 1.35469, 1.35586, 1.35306, 1.35313, 1.35021, 1.35176, 1.35231, 1.35006, 1.34795, 1.34552, 1.34541, 1.35004, 1.35048, 1.35208, 1.35948, 1.36145, 1.35855, 1.35499, 1.35255, 1.35505, 1.35699)
+var gbpusd_tp = array.from(1.3514099999999996, 1.3488999999999998, 1.3503799999999995, 1.34741, 1.34833, 1.3513100000000002, 1.35229, 1.35361, 1.3549799999999996, 1.3539400000000004, 1.3537700000000006, 1.35225, 1.3508, 1.3517100000000004, 1.3520599999999998, 1.34875, 1.3480399999999997, 1.3473700000000004, 1.34668, 1.34696, 1.3501200000000004, 1.3576799999999998, 1.3644500000000002, 1.35923, 1.3572300000000004, 1.35339, 1.3536099999999995, 1.3556700000000002)
+var gbpusd_dir = array.from(1, -1, -1, -1, 1, -1, -1, -1, -1, 1, 1, 1, -1, -1, 1, 1, 1, 1, -1, -1, -1, -1, 1, 1, 1, 1, -1, -1)
+var gbpusd_pnl = array.from(-1.0, 3.0, 3.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 3.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 3.0, -1.0, -1.0, -1.0, -1.0, -1.0, 3.0, -1.0, 3.0, 3.0, -1.0)
+var gbpusd_rlo = array.from(1.35053, 1.35204, 1.35087, 1.35057, 1.34589, 1.35216, 1.35359, 1.35449, 1.35568, 1.35306, 1.35313, 1.35021, 1.3516, 1.35217, 1.35006, 1.34795, 1.34552, 1.34541, 1.34934, 1.34986, 1.3516, 1.35906, 1.36145, 1.35855, 1.35499, 1.35255, 1.3547, 1.35673)
+var gbpusd_rhi = array.from(1.35066, 1.35246, 1.35102, 1.35133, 1.3464, 1.35235, 1.35393, 1.35469, 1.35586, 1.35326, 1.35324, 1.35051, 1.35176, 1.35231, 1.35052, 1.34813, 1.34605, 1.34583, 1.35004, 1.35048, 1.35208, 1.35948, 1.36191, 1.3587, 1.35526, 1.35275, 1.35505, 1.35699)
+
+draw_trades(sts, ets, xts, epx, sl_arr, tp_arr, dir_arr, pnl_arr, rlo, rhi) =>
+    n = array.size(ets)
+    for i = 0 to n - 1
+        st   = array.get(sts,   i)
+        et   = array.get(ets,   i)
+        xt   = array.get(xts,   i)
+        ep   = array.get(epx,   i)
+        sl   = array.get(sl_arr, i)
+        tp   = array.get(tp_arr, i)
+        d    = array.get(dir_arr, i)
+        pnl  = array.get(pnl_arr, i)
+        rl   = array.get(rlo,   i)
+        rh   = array.get(rhi,   i)
+        win  = pnl > 0
+
+        entry_col = d == 1 ? color.new(#2196F3, 0) : color.new(#FF5722, 0)
+        exit_col  = win  ? color.new(#4CAF50, 0)  : color.new(#F44336, 0)
+
+        // Rectangle zone box spans full trade so it is easy to see
+        // Left edge = setup candle (sweep wick), right edge = exit
+        box.new(st, rh, xt, rl,
+                xloc        = xloc.bar_time,
+                bgcolor     = color.new(entry_col, 85),
+                border_color = entry_col,
+                border_width = 1)
+
+        // Entry arrow pinned at entry price
+        label.new(et, ep,
+                  text      = d == 1 ? "BUY ENTRY" : "SELL ENTRY",
+                  xloc      = xloc.bar_time,
+                  style     = d == 1 ? label.style_label_upper_left
+                                     : label.style_label_lower_left,
+                  color     = entry_col,
+                  textcolor = color.white,
+                  size      = size.small)
+
+        // Exit label at TP or SL price level
+        label.new(xt, win ? tp : sl,
+                  text      = win ? "WIN +" + str.tostring(pnl, "#.#") + "R"
+                                  : "LOSS " + str.tostring(pnl, "#.#") + "R",
+                  xloc      = xloc.bar_time,
+                  style     = label.style_label_left,
+                  color     = exit_col,
+                  textcolor = color.white,
+                  size      = size.small)
+
+        // Entry price line
+        line.new(et, ep, xt, ep,
+                 xloc  = xloc.bar_time,
+                 color = entry_col,
+                 width = 1)
+
+        // SL line
+        line.new(et, sl, xt, sl,
+                 xloc  = xloc.bar_time,
+                 color = color.new(#F44336, 50),
+                 style = line.style_dashed)
+
+        // TP line
+        line.new(et, tp, xt, tp,
+                 xloc  = xloc.bar_time,
+                 color = color.new(#4CAF50, 50),
+                 style = line.style_dashed)
+
+if barstate.islast and str.contains(syminfo.tickerid, "GBPUSD")
+    draw_trades(gbpusd_sts, gbpusd_ets, gbpusd_xts, gbpusd_epx, gbpusd_sl, gbpusd_tp, gbpusd_dir, gbpusd_pnl, gbpusd_rlo, gbpusd_rhi)
+
+// 28 total trades across 1 symbol(s)

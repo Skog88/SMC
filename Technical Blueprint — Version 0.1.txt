@@ -1,0 +1,556 @@
+Technical Blueprint — Version 0.1
+
+Your system should be built as a local event-driven trading daemon, not as one big script. The PDF strategy is simple, but automation makes it complex because we need clean state management.
+
+The PDF’s core logic is: use M15 to identify the high-probability setup, use M1 only for precise entry, and let the rectangle define entry/confirmation/SL/TP logic. The PDF explicitly says the rectangle controls entry, confirmation, stop loss, and take profit; M15 identifies the setup, while M1 decides the entry.
+
+1. Strategy Rules From the PDF
+A. Direction Filter — M15 EMA
+
+Use either:
+
+EMA 50
+EMA 200
+or both
+
+Mechanical rule:
+
+If M15 close > EMA → only long setups
+If M15 close < EMA → only short setups
+
+Optional stronger version:
+
+Long only if:
+M15 close > EMA50
+EMA50 > EMA200
+EMA50 slope positive
+
+Short only if:
+M15 close < EMA50
+EMA50 < EMA200
+EMA50 slope negative
+
+The PDF says price above the EMA means look for longs, price below means look for shorts, and it warns not to trade when price is ranging around the EMA.
+
+2. Continuation Setup Logic
+
+The strategy is continuation only, not reversal.
+
+Long setup
+
+You want:
+
+Trend = bullish
+Price above EMA
+Valid M15 low forms
+Price later sweeps that low
+M15 candle closes back above that low
+Short setup
+
+You want:
+
+Trend = bearish
+Price below EMA
+Valid M15 high forms
+Price later sweeps that high
+M15 candle closes back below that high
+
+The PDF says that in an uptrend the focus is on lows, and in a downtrend the focus is on highs. It also defines weakness as price taking a low/high but failing to close beyond it.
+
+3. M15 Weakness Sweep Detection
+
+This is the most important mechanical part.
+
+Bullish weakness sweep
+
+For a marked M15 low:
+
+candle.low < marked_low
+candle.close > marked_low
+
+Optional quality filters:
+
+wick_size >= min_wick_points
+close_position >= 50% of candle range
+body_not_too_large_against_direction
+sweep_depth <= max_sweep_depth
+
+Example:
+
+Marked low = 1.10000
+M15 candle low = 1.09970
+M15 candle close = 1.10020
+
+Valid bullish weakness sweep.
+Bearish weakness sweep
+
+For a marked M15 high:
+
+candle.high > marked_high
+candle.close < marked_high
+
+Optional quality filters:
+
+wick_size >= min_wick_points
+close_position <= 50% of candle range
+sweep_depth <= max_sweep_depth
+
+The PDF’s Step 2 says the setup requires price to sweep past the marked high/low and then close with weakness. Without that trigger, there is no entry.
+
+4. Rectangle Calculation
+
+After the M15 weakness candle closes, calculate the rectangle.
+
+Bullish rectangle
+rectangle_low  = M15 weakness candle low
+rectangle_high = M15 weakness candle close
+Bearish rectangle
+rectangle_low  = M15 weakness candle close
+rectangle_high = M15 weakness candle high
+
+The PDF says the bullish rectangle is drawn from the M15 candle close to the low, and the bearish rectangle from the close to the high.
+
+5. M1 Flip Entry
+
+After the rectangle is active, switch to M1 monitoring.
+
+Bullish M1 flip
+m1_candle.close > rectangle_high
+
+Entry:
+
+Buy at market or buy stop after M1 close
+Bearish M1 flip
+m1_candle.close < rectangle_low
+
+Entry:
+
+Sell at market or sell stop after M1 close
+
+The PDF defines the safest entry as waiting for a 1-minute candle to close outside the rectangle: above for buys, below for sells.
+
+Full System Architecture
+Component 1 — MT5 Data Engine
+
+Purpose:
+
+Pull clean M15 and M1 data from Fusion Markets MT5.
+Normalize all symbols into one standard candle format.
+Feed the Rule Engine.
+Main responsibilities
+Connect to MT5
+Check terminal/account status
+Pull historical warmup candles
+Stream/update M15 candles
+Pull M1 only when needed
+Normalize symbol digits, point value, spread, pip value
+Detect new closed candles
+Handle reconnects
+Important design choice
+
+Do not run logic on unfinished M15 candles.
+
+Use:
+
+M15 closed candle only for setup detection
+M1 closed candle only for flip confirmation
+
+That prevents false signals from candle repainting before close.
+
+Component 2 — Rule Engine
+
+The Rule Engine must stay deterministic.
+
+It should not ask Claude:
+
+“Is this a sweep?”
+“Should I enter?”
+“Where is SL?”
+
+The Rule Engine decides:
+
+Trend
+Structure
+Sweep
+Rectangle
+M1 flip
+SL
+TP
+Position size
+Execution permission
+
+The AI Brain only scores context.
+
+Component 3 — AI Brain
+
+Important correction:
+
+Claude API is not truly local.
+Your Python system runs locally, but the reasoning request goes to Anthropic’s servers through the Claude API.
+
+The AI Brain should receive structured setup data like this:
+
+{
+  "setup_id": "EURUSD_2026-05-02_09-45_M15_BULL",
+  "symbol": "EURUSD",
+  "timeframe": "M15",
+  "direction": "long",
+  "session": "London",
+  "ema": {
+    "ema_50": 1.1023,
+    "ema_200": 1.0987,
+    "price_vs_ema_50": "above",
+    "ema_50_slope": "up"
+  },
+  "structure": {
+    "trend_state": "bullish_continuation",
+    "marked_level_type": "M15_low",
+    "marked_level_price": 1.1000,
+    "inside_imbalance": true,
+    "session_high_low": false
+  },
+  "sweep": {
+    "trigger_candle_time": "2026-05-02T09:45:00",
+    "open": 1.1010,
+    "high": 1.1015,
+    "low": 1.0997,
+    "close": 1.1003,
+    "sweep_depth_points": 3.0,
+    "wick_size_points": 6.0,
+    "closed_back_inside": true
+  },
+  "rectangle": {
+    "high": 1.1003,
+    "low": 1.0997
+  },
+  "risk": {
+    "planned_rr": 3.0,
+    "spread_points": 1.2
+  }
+}
+
+Claude returns:
+
+{
+  "confidence_score": 78,
+  "decision": "approve",
+  "reasoning": "Bullish continuation is valid. Sweep depth is controlled, candle closed back above the marked low, and EMA structure supports continuation. Risk is acceptable if spread remains below threshold."
+}
+
+Execution should only use:
+
+confidence_score
+decision
+
+The reasoning goes to the journal only.
+
+Component 4 — Journal / Database
+
+Use SQLite first. It is enough for local trading.
+
+Core tables
+setups
+
+Stores every detected M15 setup, even skipped ones.
+
+CREATE TABLE setups (
+    setup_id TEXT PRIMARY KEY,
+    symbol TEXT,
+    direction TEXT,
+    session TEXT,
+    m15_time TEXT,
+
+    ema_50 REAL,
+    ema_200 REAL,
+    price_vs_ema TEXT,
+    ema_slope TEXT,
+
+    marked_level_type TEXT,
+    marked_level_price REAL,
+    inside_imbalance INTEGER,
+    session_high_low INTEGER,
+
+    sweep_high REAL,
+    sweep_low REAL,
+    sweep_open REAL,
+    sweep_close REAL,
+    sweep_depth_points REAL,
+    wick_size_points REAL,
+
+    rectangle_high REAL,
+    rectangle_low REAL,
+
+    ai_score INTEGER,
+    ai_decision TEXT,
+    ai_reasoning TEXT,
+
+    status TEXT,
+    created_at TEXT
+);
+trades
+
+Stores only executed trades.
+
+CREATE TABLE trades (
+    trade_id TEXT PRIMARY KEY,
+    setup_id TEXT,
+    symbol TEXT,
+    direction TEXT,
+
+    entry_time TEXT,
+    entry_price REAL,
+    sl REAL,
+    tp REAL,
+    lot_size REAL,
+    planned_rr REAL,
+
+    exit_time TEXT,
+    exit_price REAL,
+    exit_reason TEXT,
+    pnl_money REAL,
+    pnl_r REAL,
+
+    mt5_order_id TEXT,
+    mt5_position_id TEXT,
+
+    screenshot_path TEXT,
+
+    FOREIGN KEY(setup_id) REFERENCES setups(setup_id)
+);
+ai_reviews
+
+Useful if you later test different prompts/models.
+
+CREATE TABLE ai_reviews (
+    review_id TEXT PRIMARY KEY,
+    setup_id TEXT,
+    model TEXT,
+    prompt_version TEXT,
+    confidence_score INTEGER,
+    decision TEXT,
+    reasoning TEXT,
+    raw_response TEXT,
+    created_at TEXT
+);
+System State Machine
+
+Each symbol should have its own state.
+
+IDLE
+  ↓
+M15_CANDIDATE_FOUND
+  ↓
+M15_WEAKNESS_CONFIRMED
+  ↓
+AI_REVIEW_PENDING
+  ↓
+AI_APPROVED / AI_REJECTED
+  ↓
+RECTANGLE_ACTIVE
+  ↓
+M1_FLIP_CONFIRMED
+  ↓
+ORDER_SENT
+  ↓
+POSITION_OPEN
+  ↓
+POSITION_CLOSED
+  ↓
+JOURNAL_COMPLETE
+
+Rejected/skipped states:
+
+NO_TREND
+RANGING_AROUND_EMA
+NO_VALID_STRUCTURE
+NO_WEAKNESS_SWEEP
+AI_REJECTED
+SPREAD_TOO_HIGH
+RISK_TOO_LARGE
+M1_FLIP_TIMEOUT
+DAILY_LOSS_LIMIT_REACHED
+
+These skipped states are important because your journal must learn from non-trades, not only trades.
+
+Risk Engine
+
+Before any order goes to MT5, the Risk Engine must approve it.
+
+Minimum controls:
+
+Max risk per trade
+Max daily loss
+Max open positions
+Max trades per symbol per day
+Max spread
+Max slippage
+Min RR
+No trade near major news, optional later
+Kill switch file/button
+
+Example config:
+
+risk:
+  account_risk_percent: 0.5
+  max_daily_loss_percent: 2.0
+  max_open_positions: 2
+  max_trades_per_symbol_per_day: 1
+  min_rr: 3.0
+  max_spread_points:
+    EURUSD: 15
+    XAUUSD: 50
+    US100: 200
+  sl_buffer_points:
+    forex: 2
+    metals: 20
+    indices: 50
+Execution Engine
+
+The Execution Engine should only receive a finalized order ticket:
+
+{
+  "symbol": "EURUSD",
+  "direction": "buy",
+  "entry_type": "market",
+  "lot_size": 0.03,
+  "entry_price": 1.1005,
+  "sl": 1.0995,
+  "tp": 1.1035,
+  "setup_id": "EURUSD_2026-05-02_09-45_M15_BULL"
+}
+
+MT5 execution flow:
+
+Check symbol is visible
+Check trading allowed
+Check spread
+Calculate lot size
+Send order with SL/TP
+Confirm order accepted
+Store MT5 ticket
+Monitor position
+Update journal on close
+Recommended Project Folder Structure
+mt5_rectangle_ai/
+│
+├── main.py
+├── config.yaml
+├── requirements.txt
+│
+├── core/
+│   ├── data_engine.py
+│   ├── candle_builder.py
+│   ├── symbol_config.py
+│   └── sessions.py
+│
+├── strategy/
+│   ├── ema_filter.py
+│   ├── structure_detector.py
+│   ├── sweep_detector.py
+│   ├── rectangle.py
+│   ├── m1_flip.py
+│   └── state_machine.py
+│
+├── ai/
+│   ├── claude_client.py
+│   ├── prompt_builder.py
+│   ├── response_parser.py
+│   └── prompt_versions/
+│
+├── execution/
+│   ├── risk_engine.py
+│   ├── position_sizer.py
+│   ├── mt5_executor.py
+│   └── trade_monitor.py
+│
+├── journal/
+│   ├── db.py
+│   ├── schema.sql
+│   ├── setup_logger.py
+│   ├── trade_logger.py
+│   ├── screenshot.py
+│   └── reports.py
+│
+├── dashboards/
+│   └── local_dashboard.py
+│
+├── data/
+│   ├── journal.sqlite
+│   ├── screenshots/
+│   └── reports/
+│
+└── logs/
+    ├── system.log
+    ├── strategy.log
+    └── execution.log
+Build Order
+Phase 1 — Mechanical Strategy Only
+
+No AI. No live trading.
+
+Build:
+
+MT5 data pull
+M15 EMA filter
+M15 structure detector
+Weakness sweep detector
+Rectangle calculator
+M1 flip detector
+SQLite setup journal
+
+Goal:
+
+Can the system correctly identify the PDF setup mechanically?
+Phase 2 — AI Scoring Layer
+
+Add Claude after mechanical detection.
+
+Build:
+
+Structured setup JSON
+Prompt versioning
+Claude confidence score
+Reasoning saved to journal
+AI reject/approve threshold
+
+Goal:
+
+Can AI filter weak setups without controlling execution logic?
+Phase 3 — Paper Execution
+
+Use MT5 demo account.
+
+Build:
+
+Position sizing
+SL/TP placement
+Order sending
+Trade monitoring
+Outcome logging
+Chart screenshots
+
+Goal:
+
+Can the full loop run without manual intervention?
+Phase 4 — Feedback Reports
+
+Build reports like:
+
+Win rate by AI score bucket
+Win rate by session
+Win rate by symbol
+Average R by rectangle size
+Average R by sweep depth
+AI approved vs AI rejected comparison
+Best score threshold by instrument
+Phase 5 — Live Micro-Lot
+
+Only after demo stats are stable.
+
+Start with:
+
+0.01 lot
+max 1 trade per day
+max 1 symbol
+manual kill switch active
+full logging

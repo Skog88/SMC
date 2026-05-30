@@ -1,0 +1,16 @@
+{
+  "symbol": "NAS100",
+  "start": "2026-02-05T21:30:42",
+  "end": "2026-05-06T21:30:42",
+  "m15_bars": 5840,
+  "m1_bars": 87438,
+  "setups": 334,
+  "trades": 124,
+  "wins": 28,
+  "losses": 96,
+  "breakevens": 0,
+  "open_at_end": 0,
+  "win_rate": 22.58064516129032,
+  "total_r": -12.0,
+  "average_r": -0.0967741935483871
+}

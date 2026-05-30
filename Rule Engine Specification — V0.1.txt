@@ -1,0 +1,965 @@
+Rule Engine Specification — V0.1
+
+This is the mechanical core of the system.
+
+The Rule Engine must answer only one question:
+
+Is there a valid rectangle-method setup according to the rules?
+
+It does not decide based on intuition. It does not “think.” It only calculates.
+
+The PDF strategy is based on M15 for setup detection and M1 for entry execution. The rectangle defines entry, confirmation, stop loss, and take profit. The PDF also says the strategy is continuation-based, uses EMA direction, waits for a weakness sweep, then enters after an M1 flip outside the rectangle.
+
+1. Input Data Requirements
+
+For each symbol, the Rule Engine needs:
+
+M15 candles
+M1 candles
+EMA 50 and/or EMA 200 on M15
+Session information
+Symbol metadata
+Spread data
+Account/risk settings
+Standard candle object
+
+Every candle must be normalized into this structure:
+
+{
+  "symbol": "XAUUSD",
+  "timeframe": "M15",
+  "time": "2026-05-02T09:45:00+02:00",
+  "open": 2325.10,
+  "high": 2328.50,
+  "low": 2321.30,
+  "close": 2326.70,
+  "tick_volume": 1245,
+  "spread": 25,
+  "is_closed": true
+}
+
+Rule:
+
+Only closed candles can trigger setup logic.
+
+Unclosed M15 candles may be watched for display, but they cannot create a valid setup.
+
+2. EMA Direction Filter
+
+The PDF allows either EMA 50 or EMA 200. For automation, use both but make them configurable. The PDF says price above the moving average means look for longs, while price below means look for shorts. It also warns against trading when price is ranging around the moving average.
+
+Config
+ema:
+  primary_period: 50
+  secondary_period: 200
+  use_secondary_confirmation: true
+  min_distance_from_ema_points: 20
+  min_ema_slope_points: 5
+  slope_lookback_candles: 5
+Long direction rule
+
+A symbol is long-biased if:
+
+M15 close > EMA50
+AND distance from EMA50 >= min_distance_from_ema_points
+AND EMA50 slope over last N candles > min_ema_slope_points
+
+Optional stronger rule:
+
+AND EMA50 > EMA200
+Short direction rule
+
+A symbol is short-biased if:
+
+M15 close < EMA50
+AND distance from EMA50 >= min_distance_from_ema_points
+AND EMA50 slope over last N candles < -min_ema_slope_points
+
+Optional stronger rule:
+
+AND EMA50 < EMA200
+No-trade EMA conditions
+
+Skip if:
+
+Price is too close to EMA
+EMA is flat
+Price is crossing repeatedly above/below EMA
+EMA50 and EMA200 conflict
+
+Skip reason examples:
+
+SKIP_PRICE_TOO_CLOSE_TO_EMA
+SKIP_EMA_FLAT
+SKIP_EMA_CONFLICT
+SKIP_RANGING_AROUND_EMA
+3. Continuation Rule
+
+The PDF says the method focuses only on continuation setups: in an uptrend, focus on lows; in a downtrend, focus on highs.
+
+Long continuation
+
+Valid long continuation means:
+
+Trend = bullish
+The Rule Engine searches only for M15 lows
+The future setup must sweep a previous M15 low
+Short continuation
+
+Valid short continuation means:
+
+Trend = bearish
+The Rule Engine searches only for M15 highs
+The future setup must sweep a previous M15 high
+
+No reversal trades are allowed in V0.1.
+
+Skip reason:
+
+SKIP_REVERSAL_SETUP
+4. M15 Structure Detection
+
+The PDF says the marked high/low should be part of clean structure and ideally follow a structure break.
+
+For V0.1, keep structure mechanical and simple.
+
+Swing low definition
+
+A candle is an M15 swing low if:
+
+candle.low < previous candle low
+AND candle.low < next candle low
+
+Stronger version:
+
+candle.low is the lowest low within left/right lookback window
+
+Example config:
+
+structure:
+  swing_left: 2
+  swing_right: 2
+  min_swing_distance_points: 30
+  max_level_age_candles: 40
+  require_clean_trend: true
+Swing high definition
+
+A candle is an M15 swing high if:
+
+candle.high > previous candle high
+AND candle.high > next candle high
+
+Stronger version:
+
+candle.high is the highest high within left/right lookback window
+Long structure rule
+
+For a valid long level:
+
+Current trend = bullish
+Find recent M15 swing low
+Swing low is above EMA or not too far below EMA
+There was bullish movement after that low
+Level is not too old
+Level has not already been swept
+Short structure rule
+
+For a valid short level:
+
+Current trend = bearish
+Find recent M15 swing high
+Swing high is below EMA or not too far above EMA
+There was bearish movement after that high
+Level is not too old
+Level has not already been swept
+Clean trend filter
+
+For V0.1:
+
+Long: latest swing high > previous swing high AND latest swing low > previous swing low
+Short: latest swing high < previous swing high AND latest swing low < previous swing low
+
+Skip reasons:
+
+SKIP_NO_VALID_SWING_LOW
+SKIP_NO_VALID_SWING_HIGH
+SKIP_LEVEL_TOO_OLD
+SKIP_LEVEL_ALREADY_SWEPT
+SKIP_STRUCTURE_NOT_CLEAN
+5. Imbalance / Fair Value Gap Filter
+
+The PDF says the highest-probability highs/lows are inside imbalances or fair value gaps. It also mentions session highs/lows as preferred filters.
+
+For V0.1, treat imbalance as a quality score, not a hard requirement.
+
+Bullish FVG definition
+
+A bullish FVG exists if:
+
+candle[i-2].high < candle[i].low
+
+FVG zone:
+
+fvg_low = candle[i-2].high
+fvg_high = candle[i].low
+Bearish FVG definition
+
+A bearish FVG exists if:
+
+candle[i-2].low > candle[i].high
+
+FVG zone:
+
+fvg_low = candle[i].high
+fvg_high = candle[i-2].low
+Level-inside-imbalance rule
+
+A marked level is “inside imbalance” if:
+
+fvg_low <= marked_level_price <= fvg_high
+
+or within buffer:
+
+marked_level is within X points of FVG zone
+
+Config:
+
+filters:
+  imbalance:
+    enabled: true
+    required: false
+    lookback_candles: 30
+    buffer_points: 10
+
+Output field:
+
+{
+  "inside_imbalance": true,
+  "imbalance_type": "bullish_fvg",
+  "imbalance_low": 2320.50,
+  "imbalance_high": 2322.10
+}
+
+Skip reason only if required:
+
+SKIP_NOT_INSIDE_IMBALANCE
+6. Session High/Low Filter
+
+The PDF says session highs/lows are preferred areas: Asia, London, or New York.
+
+Again, make this a quality score in V0.1, not a hard rule.
+
+Example sessions using Oslo time:
+
+sessions:
+  asia:
+    start: "00:00"
+    end: "08:00"
+  london:
+    start: "08:00"
+    end: "17:00"
+  new_york:
+    start: "14:30"
+    end: "22:00"
+Session high/low detection
+
+For each session:
+
+session_high = max(highs during session)
+session_low = min(lows during session)
+
+A marked level is session-related if:
+
+abs(marked_level - session_high) <= buffer
+OR
+abs(marked_level - session_low) <= buffer
+
+Output:
+
+{
+  "session": "London",
+  "level_is_session_high_low": true,
+  "related_session_level": "Asia low"
+}
+7. Weakness Sweep Detection
+
+This is the main trigger.
+
+The PDF defines weakness as price taking a low/high but failing to close beyond it. In a bullish scenario, price takes the low but closes above it. In a bearish scenario, price takes the high but closes below it.
+
+Bullish weakness sweep
+
+Given:
+
+marked_level_type = M15_LOW
+marked_level_price = previous swing low
+
+Valid sweep:
+
+trigger_candle.low < marked_level_price
+AND trigger_candle.close > marked_level_price
+
+Extra quality filters:
+
+sweep_depth >= min_sweep_depth_points
+wick_size >= min_wick_size_points
+close must be in upper part of candle
+
+Calculations:
+
+sweep_depth = marked_level_price - trigger_candle.low
+lower_wick = min(open, close) - low
+candle_range = high - low
+close_position = (close - low) / candle_range
+
+Quality rule:
+
+close_position >= 0.50
+
+Stronger version:
+
+close_position >= 0.60
+Bearish weakness sweep
+
+Given:
+
+marked_level_type = M15_HIGH
+marked_level_price = previous swing high
+
+Valid sweep:
+
+trigger_candle.high > marked_level_price
+AND trigger_candle.close < marked_level_price
+
+Calculations:
+
+sweep_depth = trigger_candle.high - marked_level_price
+upper_wick = high - max(open, close)
+candle_range = high - low
+close_position = (close - low) / candle_range
+
+Quality rule:
+
+close_position <= 0.50
+
+Stronger version:
+
+close_position <= 0.40
+
+Config:
+
+sweep:
+  min_sweep_depth_points: 5
+  max_sweep_depth_points: 100
+  min_wick_points: 5
+  min_wick_to_range_ratio: 0.25
+  bullish_min_close_position: 0.50
+  bearish_max_close_position: 0.50
+
+Skip reasons:
+
+SKIP_NO_SWEEP
+SKIP_SWEEP_CLOSED_BEYOND_LEVEL
+SKIP_SWEEP_TOO_SMALL
+SKIP_SWEEP_TOO_DEEP
+SKIP_WICK_TOO_SMALL
+SKIP_CLOSE_POSITION_WEAK
+8. Rectangle Formula
+
+The PDF says after the M15 weakness candle closes, draw the rectangle from the close to the low in a bullish setup, or from the close to the high in a bearish setup.
+
+Bullish rectangle
+rectangle_low = trigger_candle.low
+rectangle_high = trigger_candle.close
+Bearish rectangle
+rectangle_low = trigger_candle.close
+rectangle_high = trigger_candle.high
+Rectangle size
+rectangle_size_points = rectangle_high - rectangle_low
+
+Quality rules:
+
+rectangle_size_points >= min_rectangle_points
+rectangle_size_points <= max_rectangle_points
+
+Config:
+
+rectangle:
+  min_size_points: 5
+  max_size_points: 150
+  expires_after_m1_candles: 30
+
+Skip reasons:
+
+SKIP_RECTANGLE_TOO_SMALL
+SKIP_RECTANGLE_TOO_LARGE
+9. AI Review Gate
+
+The Rule Engine sends the setup to Claude only after:
+
+EMA direction valid
+Continuation valid
+Structure valid
+Weakness sweep valid
+Rectangle valid
+
+Claude receives the setup object and returns:
+
+{
+  "confidence_score": 0,
+  "decision": "approve_or_reject",
+  "reasoning": "text"
+}
+AI approval rule
+If ai_score >= threshold → rectangle becomes active
+If ai_score < threshold → setup is rejected
+
+Config:
+
+ai:
+  enabled: true
+  min_confidence_score: 70
+  reject_on_invalid_json: true
+  timeout_seconds: 20
+
+Important:
+
+Claude cannot override mechanical invalidation.
+Claude cannot change entry, SL, TP, or lot size.
+Claude only approves or rejects a mechanically valid setup.
+
+Skip reasons:
+
+SKIP_AI_REJECTED
+SKIP_AI_TIMEOUT
+SKIP_AI_INVALID_RESPONSE
+10. M1 Flip Entry Rule
+
+The PDF says the safest entry is to wait for a 1-minute candle to close outside the rectangle: above the rectangle for a bullish entry, below the rectangle for a bearish entry.
+
+Bullish M1 flip
+
+After bullish rectangle is active:
+
+M1 candle close > rectangle_high
+
+Entry signal:
+
+BUY
+Bearish M1 flip
+
+After bearish rectangle is active:
+
+M1 candle close < rectangle_low
+
+Entry signal:
+
+SELL
+Flip timeout
+
+If no M1 flip happens within X candles:
+
+Expire the setup
+Do not trade
+Log skipped setup
+
+Config:
+
+m1_flip:
+  require_closed_candle: true
+  max_wait_candles: 30
+  entry_mode: "market_after_close"
+  flip_buffer_points: 0
+
+Optional buffer:
+
+Bullish: M1 close > rectangle_high + buffer
+Bearish: M1 close < rectangle_low - buffer
+
+Skip reasons:
+
+SKIP_M1_FLIP_TIMEOUT
+SKIP_M1_CLOSE_NOT_OUTSIDE_RECTANGLE
+11. Stop Loss Formula
+
+The PDF says the stop loss should be placed slightly above or below the high/low that formed the rectangle.
+
+Long SL
+sl = rectangle_low - sl_buffer_points
+Short SL
+sl = rectangle_high + sl_buffer_points
+
+Config:
+
+sl:
+  buffer_points:
+    forex: 2
+    metals: 20
+    indices: 50
+    crypto: 100
+  min_sl_points: 5
+  max_sl_points: 200
+SL distance
+
+For long:
+
+sl_distance = entry_price - sl
+
+For short:
+
+sl_distance = sl - entry_price
+
+Skip reasons:
+
+SKIP_SL_TOO_SMALL
+SKIP_SL_TOO_LARGE
+SKIP_INVALID_SL_DISTANCE
+12. Take Profit Formula
+
+The PDF says TP should be far from the rectangle and can target the next strong M15 key level or at least 3:1 RR.
+
+For V0.1, use fixed RR first.
+
+Long TP
+tp = entry_price + (sl_distance * rr)
+Short TP
+tp = entry_price - (sl_distance * rr)
+
+Config:
+
+tp:
+  mode: "fixed_rr"
+  rr: 3.0
+  allow_m15_key_level_target: false
+
+Later V0.2 can add:
+
+TP at next M15 high for longs
+TP at next M15 low for shorts
+TP at liquidity pool
+Partial TP
+Trailing stop
+Break-even
+
+Skip reason:
+
+SKIP_RR_BELOW_MINIMUM
+13. Spread and Execution Filters
+
+Before entry:
+
+Current spread must be below max allowed spread
+Market must be open
+Symbol must be tradable
+MT5 connection must be healthy
+No existing trade conflict
+
+Config:
+
+execution_filters:
+  max_spread_points:
+    default: 30
+    XAUUSD: 60
+    US100: 300
+  max_slippage_points:
+    default: 10
+  require_trade_allowed: true
+
+Skip reasons:
+
+SKIP_SPREAD_TOO_HIGH
+SKIP_MARKET_CLOSED
+SKIP_SYMBOL_NOT_TRADABLE
+SKIP_MT5_DISCONNECTED
+SKIP_EXISTING_POSITION
+14. Risk Rules
+
+The Rule Engine should request approval from the Risk Engine before order execution.
+
+Required risk checks
+Max risk per trade
+Max daily loss
+Max open positions
+Max symbol exposure
+Max trades per symbol per day
+Min and max lot size
+Minimum RR
+
+Example config:
+
+risk:
+  risk_per_trade_percent: 0.5
+  max_daily_loss_percent: 2.0
+  max_open_positions: 2
+  max_trades_per_symbol_per_day: 1
+  max_total_trades_per_day: 3
+  min_rr: 3.0
+
+Skip reasons:
+
+SKIP_DAILY_LOSS_LIMIT
+SKIP_MAX_OPEN_POSITIONS
+SKIP_MAX_SYMBOL_TRADES_REACHED
+SKIP_LOT_SIZE_TOO_SMALL
+SKIP_LOT_SIZE_TOO_LARGE
+15. Position Sizing
+
+The position size should be calculated from account risk and SL distance.
+
+Formula:
+
+risk_money = account_balance * risk_percent
+lot_size = risk_money / money_risk_per_1_lot
+
+Because symbols differ, the system must get symbol metadata from MT5:
+
+trade_tick_size
+trade_tick_value
+volume_min
+volume_max
+volume_step
+digits
+point
+
+Generic MT5 calculation:
+
+price_distance = abs(entry_price - sl)
+ticks_to_sl = price_distance / trade_tick_size
+money_risk_per_1_lot = ticks_to_sl * trade_tick_value
+raw_lot = risk_money / money_risk_per_1_lot
+lot = round_down_to_volume_step(raw_lot)
+16. Setup Object Output
+
+When the Rule Engine detects a valid M15 weakness setup, it should produce this object:
+
+{
+  "setup_id": "XAUUSD_2026-05-02T09:45_LONG",
+  "symbol": "XAUUSD",
+  "direction": "long",
+  "state": "M15_WEAKNESS_CONFIRMED",
+
+  "trend": {
+    "ema_50": 2320.50,
+    "ema_200": 2305.20,
+    "price_vs_ema": "above",
+    "ema_slope": "up",
+    "trend_valid": true
+  },
+
+  "structure": {
+    "marked_level_type": "M15_LOW",
+    "marked_level_price": 2321.30,
+    "level_time": "2026-05-02T09:15:00+02:00",
+    "clean_structure": true,
+    "inside_imbalance": true,
+    "session_high_low": false
+  },
+
+  "sweep": {
+    "trigger_time": "2026-05-02T09:45:00+02:00",
+    "open": 2324.00,
+    "high": 2327.00,
+    "low": 2320.80,
+    "close": 2323.50,
+    "sweep_depth_points": 50,
+    "wick_size_points": 320,
+    "close_position": 0.44,
+    "valid_weakness": true
+  },
+
+  "rectangle": {
+    "low": 2320.80,
+    "high": 2323.50,
+    "size_points": 270
+  },
+
+  "status": "WAITING_FOR_AI"
+}
+
+Note: for bullish setups, a stronger close position would usually be above 0.50. The example values must be validated by the actual point system of the symbol.
+
+17. Entry Signal Object
+
+When M1 confirms the flip:
+
+{
+  "setup_id": "XAUUSD_2026-05-02T09:45_LONG",
+  "symbol": "XAUUSD",
+  "direction": "buy",
+  "entry_reason": "M1_CLOSE_ABOVE_RECTANGLE",
+  "m1_trigger_time": "2026-05-02T09:52:00+02:00",
+  "m1_close": 2323.90,
+  "rectangle_high": 2323.50,
+  "rectangle_low": 2320.80,
+  "entry_price": 2323.90,
+  "sl": 2320.30,
+  "tp": 2334.70,
+  "planned_rr": 3.0,
+  "status": "READY_FOR_RISK_CHECK"
+}
+18. Complete Rule Flow
+For each symbol:
+
+1. Load latest closed M15 candle
+2. Update EMA values
+3. Determine trend direction
+4. If no valid trend → skip
+
+5. Find valid M15 swing low/high
+6. Check continuation structure
+7. Check optional imbalance/session filters
+
+8. Watch for M15 weakness sweep
+9. If sweep closes valid → calculate rectangle
+
+10. Send setup to AI Brain
+11. If AI score below threshold → log rejected setup
+
+12. If AI approved → activate rectangle
+13. Pull/monitor M1 candles
+
+14. Wait for M1 close outside rectangle
+15. If timeout → expire setup
+
+16. If M1 flip confirmed → calculate entry, SL, TP
+17. Run spread and risk checks
+18. If approved → send order ticket to Execution Engine
+19. Log setup and trade
+19. Rule Engine Module Map
+
+Build these files:
+
+strategy/
+├── ema_filter.py
+├── structure_detector.py
+├── imbalance_detector.py
+├── session_levels.py
+├── sweep_detector.py
+├── rectangle.py
+├── m1_flip.py
+├── signal_builder.py
+├── skip_reasons.py
+└── state_machine.py
+ema_filter.py
+
+Responsible for:
+
+Calculate EMA
+Check price above/below EMA
+Check EMA slope
+Reject ranging conditions
+structure_detector.py
+
+Responsible for:
+
+Find swing highs/lows
+Validate continuation structure
+Check level age
+Avoid already-swept levels
+imbalance_detector.py
+
+Responsible for:
+
+Detect bullish/bearish FVGs
+Check if marked level is inside or near imbalance
+session_levels.py
+
+Responsible for:
+
+Calculate Asia/London/NY highs/lows
+Tag setup if level is near session high/low
+sweep_detector.py
+
+Responsible for:
+
+Detect bullish weakness sweep
+Detect bearish weakness sweep
+Calculate wick size
+Calculate sweep depth
+Calculate close position
+rectangle.py
+
+Responsible for:
+
+Build rectangle from M15 trigger candle
+Validate rectangle size
+m1_flip.py
+
+Responsible for:
+
+Monitor M1 candles after rectangle activation
+Detect close outside rectangle
+Expire setup if no flip
+signal_builder.py
+
+Responsible for:
+
+Create setup JSON
+Create AI request JSON
+Create entry signal JSON
+skip_reasons.py
+
+Responsible for:
+
+Standardized skip reason constants
+state_machine.py
+
+Responsible for:
+
+Control per-symbol setup state
+Prevent duplicate trades
+Move setup from scanning to closed outcome
+20. Minimum Config File
+system:
+  timezone: "Europe/Oslo"
+  mode: "demo"
+  symbols:
+    - "EURUSD"
+    - "GBPUSD"
+    - "XAUUSD"
+    - "US100"
+
+timeframes:
+  setup: "M15"
+  entry: "M1"
+
+ema:
+  primary_period: 50
+  secondary_period: 200
+  use_secondary_confirmation: false
+  min_distance_from_ema_points: 20
+  slope_lookback_candles: 5
+  min_ema_slope_points: 5
+
+structure:
+  swing_left: 2
+  swing_right: 2
+  max_level_age_candles: 40
+  min_swing_distance_points: 20
+  require_clean_trend: true
+
+filters:
+  imbalance:
+    enabled: true
+    required: false
+    lookback_candles: 30
+    buffer_points: 10
+  sessions:
+    enabled: true
+    required: false
+    buffer_points: 10
+
+sweep:
+  min_sweep_depth_points: 5
+  max_sweep_depth_points: 150
+  min_wick_points: 5
+  min_wick_to_range_ratio: 0.25
+  bullish_min_close_position: 0.50
+  bearish_max_close_position: 0.50
+
+rectangle:
+  min_size_points: 5
+  max_size_points: 200
+  expires_after_m1_candles: 30
+
+m1_flip:
+  require_closed_candle: true
+  max_wait_candles: 30
+  flip_buffer_points: 0
+  entry_mode: "market_after_close"
+
+ai:
+  enabled: true
+  provider: "claude"
+  model: "claude-sonnet"
+  min_confidence_score: 70
+  timeout_seconds: 20
+  reject_on_invalid_json: true
+
+risk:
+  risk_per_trade_percent: 0.5
+  max_daily_loss_percent: 2.0
+  max_open_positions: 2
+  max_trades_per_symbol_per_day: 1
+  max_total_trades_per_day: 3
+  min_rr: 3.0
+
+execution_filters:
+  max_spread_points:
+    default: 30
+    EURUSD: 15
+    GBPUSD: 20
+    XAUUSD: 60
+    US100: 300
+  max_slippage_points:
+    default: 10
+
+sl:
+  buffer_points:
+    default: 5
+    forex: 2
+    metals: 20
+    indices: 50
+
+tp:
+  mode: "fixed_rr"
+  rr: 3.0
+21. Standard Skip Reasons
+
+Use these exact strings in the journal.
+
+SKIP_NO_EMA_DIRECTION = "SKIP_NO_EMA_DIRECTION"
+SKIP_PRICE_TOO_CLOSE_TO_EMA = "SKIP_PRICE_TOO_CLOSE_TO_EMA"
+SKIP_EMA_FLAT = "SKIP_EMA_FLAT"
+SKIP_EMA_CONFLICT = "SKIP_EMA_CONFLICT"
+SKIP_RANGING_AROUND_EMA = "SKIP_RANGING_AROUND_EMA"
+
+SKIP_REVERSAL_SETUP = "SKIP_REVERSAL_SETUP"
+SKIP_NO_VALID_SWING_LOW = "SKIP_NO_VALID_SWING_LOW"
+SKIP_NO_VALID_SWING_HIGH = "SKIP_NO_VALID_SWING_HIGH"
+SKIP_LEVEL_TOO_OLD = "SKIP_LEVEL_TOO_OLD"
+SKIP_LEVEL_ALREADY_SWEPT = "SKIP_LEVEL_ALREADY_SWEPT"
+SKIP_STRUCTURE_NOT_CLEAN = "SKIP_STRUCTURE_NOT_CLEAN"
+
+SKIP_NOT_INSIDE_IMBALANCE = "SKIP_NOT_INSIDE_IMBALANCE"
+
+SKIP_NO_SWEEP = "SKIP_NO_SWEEP"
+SKIP_SWEEP_CLOSED_BEYOND_LEVEL = "SKIP_SWEEP_CLOSED_BEYOND_LEVEL"
+SKIP_SWEEP_TOO_SMALL = "SKIP_SWEEP_TOO_SMALL"
+SKIP_SWEEP_TOO_DEEP = "SKIP_SWEEP_TOO_DEEP"
+SKIP_WICK_TOO_SMALL = "SKIP_WICK_TOO_SMALL"
+SKIP_CLOSE_POSITION_WEAK = "SKIP_CLOSE_POSITION_WEAK"
+
+SKIP_RECTANGLE_TOO_SMALL = "SKIP_RECTANGLE_TOO_SMALL"
+SKIP_RECTANGLE_TOO_LARGE = "SKIP_RECTANGLE_TOO_LARGE"
+
+SKIP_AI_REJECTED = "SKIP_AI_REJECTED"
+SKIP_AI_TIMEOUT = "SKIP_AI_TIMEOUT"
+SKIP_AI_INVALID_RESPONSE = "SKIP_AI_INVALID_RESPONSE"
+
+SKIP_M1_FLIP_TIMEOUT = "SKIP_M1_FLIP_TIMEOUT"
+SKIP_M1_CLOSE_NOT_OUTSIDE_RECTANGLE = "SKIP_M1_CLOSE_NOT_OUTSIDE_RECTANGLE"
+
+SKIP_SPREAD_TOO_HIGH = "SKIP_SPREAD_TOO_HIGH"
+SKIP_MARKET_CLOSED = "SKIP_MARKET_CLOSED"
+SKIP_SYMBOL_NOT_TRADABLE = "SKIP_SYMBOL_NOT_TRADABLE"
+SKIP_MT5_DISCONNECTED = "SKIP_MT5_DISCONNECTED"
+SKIP_EXISTING_POSITION = "SKIP_EXISTING_POSITION"
+
+SKIP_DAILY_LOSS_LIMIT = "SKIP_DAILY_LOSS_LIMIT"
+SKIP_MAX_OPEN_POSITIONS = "SKIP_MAX_OPEN_POSITIONS"
+SKIP_MAX_SYMBOL_TRADES_REACHED = "SKIP_MAX_SYMBOL_TRADES_REACHED"
+SKIP_LOT_SIZE_TOO_SMALL = "SKIP_LOT_SIZE_TOO_SMALL"
+SKIP_LOT_SIZE_TOO_LARGE = "SKIP_LOT_SIZE_TOO_LARGE"
+SKIP_RR_BELOW_MINIMUM = "SKIP_RR_BELOW_MINIMUM"
+Final Rule Engine Decision
+
+The Rule Engine can only produce one of these outputs:
+
+NO_SETUP
+SETUP_DETECTED_WAITING_FOR_AI
+SETUP_REJECTED_BY_AI
+RECTANGLE_ACTIVE_WAITING_FOR_M1
+ENTRY_SIGNAL_READY
+TRADE_BLOCKED_BY_RISK
+ORDER_READY

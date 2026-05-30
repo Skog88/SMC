@@ -1,0 +1,1063 @@
+Journal + Database Specification — V0.1
+
+The Journal is the most important long-term component of your system.
+
+The Rule Engine finds the setup.
+The AI Brain scores the setup.
+The Execution Engine places the trade.
+But the Journal tells you whether the system is actually improving.
+
+The PDF strategy depends on a strict sequence: M15 direction and structure, weakness sweep, rectangle creation, M1 flip, then entry with SL/TP. The journal must log every stage of that sequence, because later we need to know exactly where the edge exists and where it fails. The PDF also emphasizes that M15 identifies the setup and M1 decides the entry, so both timeframes must be logged separately.
+
+1. Core Principle
+
+The Journal must log setups, not only trades.
+
+A normal trading journal logs this:
+
+Entry
+SL
+TP
+Exit
+Profit/loss
+
+Your system needs more:
+
+Why was the setup detected?
+Why was it skipped?
+What did Claude score it?
+Did M1 confirm?
+Did spread block it?
+Did it reach TP/SL?
+Was the AI score actually predictive?
+
+That means the main database object is not the trade.
+
+The main object is:
+
+setup_id
+
+A trade may or may not happen from that setup.
+
+2. Journal Entities
+
+The database should have these main tables:
+
+setups
+ai_reviews
+m1_events
+trades
+trade_events
+screenshots
+daily_stats
+system_events
+
+Optional later:
+
+news_events
+model_training_samples
+prompt_experiments
+backtest_runs
+3. Folder Structure
+mt5_rectangle_ai/
+│
+├── data/
+│   ├── journal.sqlite
+│   ├── screenshots/
+│   │   ├── 2026-05-02/
+│   │   │   ├── XAUUSD_0945_LONG_m15_setup.png
+│   │   │   ├── XAUUSD_0952_LONG_m1_entry.png
+│   │   │   └── XAUUSD_1130_LONG_exit.png
+│   │
+│   ├── exports/
+│   │   ├── setups_2026-05.csv
+│   │   ├── trades_2026-05.csv
+│   │   └── ai_score_report_2026-05.csv
+│   │
+│   └── reports/
+│       ├── daily/
+│       ├── weekly/
+│       └── model_feedback/
+│
+├── journal/
+│   ├── db.py
+│   ├── schema.sql
+│   ├── setup_logger.py
+│   ├── ai_logger.py
+│   ├── trade_logger.py
+│   ├── screenshot_logger.py
+│   ├── report_builder.py
+│   └── exporters.py
+4. Database Design
+
+Use SQLite first.
+
+Reason:
+
+Local
+Simple
+Reliable
+Easy backup
+Easy CSV export
+No server required
+Perfect for one local MT5 system
+
+Later, you can migrate to PostgreSQL if you run multiple terminals, multiple PCs, or cloud dashboards.
+
+5. Table: setups
+
+This is the core table.
+
+It logs every mechanically detected setup, whether traded or not.
+
+CREATE TABLE IF NOT EXISTS setups (
+    setup_id TEXT PRIMARY KEY,
+
+    symbol TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    setup_time TEXT NOT NULL,
+    setup_date TEXT NOT NULL,
+    session TEXT,
+
+    timeframe_setup TEXT DEFAULT 'M15',
+    timeframe_entry TEXT DEFAULT 'M1',
+
+    state TEXT NOT NULL,
+    final_status TEXT,
+
+    -- EMA / trend context
+    ema_primary_period INTEGER,
+    ema_secondary_period INTEGER,
+    ema_primary_value REAL,
+    ema_secondary_value REAL,
+    price_vs_ema TEXT,
+    ema_slope_points REAL,
+    trend_direction TEXT,
+    trend_valid INTEGER,
+
+    -- Structure context
+    marked_level_type TEXT,
+    marked_level_price REAL,
+    marked_level_time TEXT,
+    clean_structure INTEGER,
+    structure_score INTEGER,
+    level_age_candles INTEGER,
+    level_already_swept INTEGER,
+
+    -- Imbalance / FVG context
+    inside_imbalance INTEGER,
+    imbalance_type TEXT,
+    imbalance_low REAL,
+    imbalance_high REAL,
+    imbalance_distance_points REAL,
+
+    -- Session level context
+    level_is_session_high_low INTEGER,
+    related_session TEXT,
+    related_session_level TEXT,
+    session_level_distance_points REAL,
+
+    -- M15 trigger candle
+    m15_trigger_time TEXT,
+    m15_open REAL,
+    m15_high REAL,
+    m15_low REAL,
+    m15_close REAL,
+    m15_tick_volume INTEGER,
+
+    -- Sweep details
+    sweep_valid INTEGER,
+    sweep_depth_points REAL,
+    wick_size_points REAL,
+    wick_to_range_ratio REAL,
+    close_position REAL,
+
+    -- Rectangle
+    rectangle_low REAL,
+    rectangle_high REAL,
+    rectangle_size_points REAL,
+
+    -- AI result summary
+    ai_enabled INTEGER,
+    ai_score INTEGER,
+    ai_decision TEXT,
+    ai_model TEXT,
+    ai_prompt_version TEXT,
+
+    -- M1 entry status
+    m1_flip_confirmed INTEGER DEFAULT 0,
+    m1_flip_time TEXT,
+    m1_flip_close REAL,
+    m1_wait_candles INTEGER,
+
+    -- Risk/execution status
+    risk_approved INTEGER,
+    risk_block_reason TEXT,
+    execution_attempted INTEGER DEFAULT 0,
+    order_sent INTEGER DEFAULT 0,
+
+    -- Skip/reject reason
+    skip_reason TEXT,
+    skip_stage TEXT,
+
+    -- Timestamps
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+6. Important final_status Values
+
+Each setup should end with one final status.
+
+MECHANICAL_INVALID
+AI_REJECTED
+AI_APPROVED_NO_M1_FLIP
+AI_APPROVED_RISK_BLOCKED
+ORDER_FAILED
+TRADE_OPENED
+TRADE_CLOSED_WIN
+TRADE_CLOSED_LOSS
+TRADE_CLOSED_BE
+TRADE_CLOSED_MANUAL
+EXPIRED
+
+This gives you clean analysis later.
+
+7. Table: ai_reviews
+
+This table stores Claude’s full response.
+
+Do not store only the score in setups. Store the full reasoning separately.
+
+CREATE TABLE IF NOT EXISTS ai_reviews (
+    review_id TEXT PRIMARY KEY,
+    setup_id TEXT NOT NULL,
+
+    provider TEXT,
+    model TEXT,
+    prompt_version TEXT,
+
+    input_json TEXT NOT NULL,
+    raw_response TEXT,
+    parsed_json TEXT,
+
+    confidence_score INTEGER,
+    decision TEXT,
+    reasoning TEXT,
+
+    response_valid INTEGER,
+    error_message TEXT,
+    latency_ms INTEGER,
+
+    created_at TEXT NOT NULL,
+
+    FOREIGN KEY (setup_id) REFERENCES setups(setup_id)
+);
+
+Why this matters:
+
+Later you can compare Claude prompt versions.
+You can test if one scoring model was better than another.
+You can fine-tune or train using the original setup JSON + actual result.
+8. Table: m1_events
+
+This stores what happened after the rectangle became active.
+
+Not every rectangle gets an entry. That is important data.
+
+CREATE TABLE IF NOT EXISTS m1_events (
+    event_id TEXT PRIMARY KEY,
+    setup_id TEXT NOT NULL,
+
+    symbol TEXT NOT NULL,
+    direction TEXT NOT NULL,
+
+    m1_time TEXT NOT NULL,
+    m1_open REAL,
+    m1_high REAL,
+    m1_low REAL,
+    m1_close REAL,
+    m1_tick_volume INTEGER,
+
+    rectangle_low REAL,
+    rectangle_high REAL,
+
+    close_above_rectangle INTEGER,
+    close_below_rectangle INTEGER,
+    touched_rectangle INTEGER,
+    entered_rectangle INTEGER,
+
+    flip_confirmed INTEGER,
+    event_type TEXT,
+
+    created_at TEXT NOT NULL,
+
+    FOREIGN KEY (setup_id) REFERENCES setups(setup_id)
+);
+
+Useful event_type values:
+
+M1_WAITING
+M1_TOUCHED_RECTANGLE
+M1_ENTERED_RECTANGLE
+M1_FLIP_CONFIRMED
+M1_FAILED_AND_EXPIRED
+
+This lets you later study:
+
+How many AI-approved rectangles actually flipped?
+Which instruments flip fastest?
+Does a fast flip perform better than a slow flip?
+Does price entering deep into the rectangle improve or reduce win rate?
+9. Table: trades
+
+This table stores executed trades only.
+
+CREATE TABLE IF NOT EXISTS trades (
+    trade_id TEXT PRIMARY KEY,
+    setup_id TEXT NOT NULL,
+
+    symbol TEXT NOT NULL,
+    direction TEXT NOT NULL,
+
+    mt5_order_id TEXT,
+    mt5_deal_id TEXT,
+    mt5_position_id TEXT,
+
+    entry_time TEXT,
+    entry_price REAL,
+    requested_entry_price REAL,
+    sl REAL,
+    tp REAL,
+
+    lot_size REAL,
+    risk_money REAL,
+    risk_percent REAL,
+    planned_rr REAL,
+
+    sl_distance_points REAL,
+    tp_distance_points REAL,
+
+    spread_at_entry_points REAL,
+    slippage_points REAL,
+    commission REAL,
+    swap REAL,
+
+    exit_time TEXT,
+    exit_price REAL,
+    exit_reason TEXT,
+
+    gross_pnl_money REAL,
+    net_pnl_money REAL,
+    pnl_r REAL,
+
+    max_favorable_excursion_points REAL,
+    max_adverse_excursion_points REAL,
+    max_favorable_r REAL,
+    max_adverse_r REAL,
+
+    duration_minutes REAL,
+
+    status TEXT NOT NULL,
+
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+
+    FOREIGN KEY (setup_id) REFERENCES setups(setup_id)
+);
+
+Important exit_reason values:
+
+TP_HIT
+SL_HIT
+MANUAL_CLOSE
+TIME_EXIT
+BREAKEVEN
+TRAILING_STOP
+MT5_ERROR_CLOSE
+10. Table: trade_events
+
+This is the audit trail for each trade.
+
+CREATE TABLE IF NOT EXISTS trade_events (
+    event_id TEXT PRIMARY KEY,
+    trade_id TEXT NOT NULL,
+    setup_id TEXT NOT NULL,
+
+    event_time TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    price REAL,
+    volume REAL,
+
+    mt5_raw_json TEXT,
+    message TEXT,
+
+    created_at TEXT NOT NULL,
+
+    FOREIGN KEY (trade_id) REFERENCES trades(trade_id),
+    FOREIGN KEY (setup_id) REFERENCES setups(setup_id)
+);
+
+Useful event_type values:
+
+ORDER_REQUEST_CREATED
+ORDER_SENT
+ORDER_ACCEPTED
+ORDER_REJECTED
+POSITION_OPENED
+SL_MODIFIED
+TP_MODIFIED
+POSITION_CLOSED
+PARTIAL_CLOSE
+ERROR
+
+This is critical when debugging MT5 behavior.
+
+11. Table: screenshots
+
+Screenshots should be connected to both setups and trades.
+
+CREATE TABLE IF NOT EXISTS screenshots (
+    screenshot_id TEXT PRIMARY KEY,
+
+    setup_id TEXT,
+    trade_id TEXT,
+
+    symbol TEXT NOT NULL,
+    timeframe TEXT NOT NULL,
+
+    screenshot_type TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+
+    chart_time TEXT,
+    created_at TEXT NOT NULL,
+
+    FOREIGN KEY (setup_id) REFERENCES setups(setup_id),
+    FOREIGN KEY (trade_id) REFERENCES trades(trade_id)
+);
+
+Screenshot types:
+
+M15_SETUP_DETECTED
+M15_RECTANGLE_CREATED
+M1_ENTRY_TRIGGER
+ORDER_SENT
+TRADE_EXIT
+DAILY_REVIEW
+
+Screenshot naming:
+
+{date}_{symbol}_{direction}_{setup_time}_{screenshot_type}.png
+
+Example:
+
+2026-05-02_XAUUSD_LONG_0945_M15_RECTANGLE_CREATED.png
+12. Table: daily_stats
+
+This table stores daily performance summaries.
+
+CREATE TABLE IF NOT EXISTS daily_stats (
+    stat_date TEXT PRIMARY KEY,
+
+    total_setups INTEGER,
+    mechanical_valid_setups INTEGER,
+    ai_approved_setups INTEGER,
+    ai_rejected_setups INTEGER,
+
+    rectangles_activated INTEGER,
+    m1_flips_confirmed INTEGER,
+    trades_opened INTEGER,
+
+    wins INTEGER,
+    losses INTEGER,
+    breakevens INTEGER,
+
+    gross_pnl_money REAL,
+    net_pnl_money REAL,
+    total_r REAL,
+
+    avg_ai_score REAL,
+    avg_win_ai_score REAL,
+    avg_loss_ai_score REAL,
+
+    best_symbol TEXT,
+    worst_symbol TEXT,
+    best_session TEXT,
+    worst_session TEXT,
+
+    max_drawdown_money REAL,
+    max_drawdown_r REAL,
+
+    created_at TEXT,
+    updated_at TEXT
+);
+
+This table can be generated at the end of every trading day.
+
+13. Table: system_events
+
+This logs system health.
+
+CREATE TABLE IF NOT EXISTS system_events (
+    event_id TEXT PRIMARY KEY,
+
+    event_time TEXT NOT NULL,
+    component TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    message TEXT,
+    raw_json TEXT,
+
+    created_at TEXT NOT NULL
+);
+
+Components:
+
+DATA_ENGINE
+RULE_ENGINE
+AI_BRAIN
+EXECUTION_ENGINE
+JOURNAL
+MT5_CONNECTION
+RISK_ENGINE
+SCHEDULER
+
+Severity:
+
+DEBUG
+INFO
+WARNING
+ERROR
+CRITICAL
+
+This is for bugs, reconnects, Claude API errors, MT5 errors, spread blocking, etc.
+
+14. Setup Lifecycle Logging
+
+Every setup should move through this lifecycle:
+
+1. SCANNING
+2. M15_LEVEL_FOUND
+3. M15_WEAKNESS_CONFIRMED
+4. RECTANGLE_CREATED
+5. AI_REVIEW_REQUESTED
+6. AI_APPROVED or AI_REJECTED
+7. M1_MONITORING_STARTED
+8. M1_FLIP_CONFIRMED or M1_FLIP_TIMEOUT
+9. RISK_APPROVED or RISK_BLOCKED
+10. ORDER_SENT or ORDER_BLOCKED
+11. TRADE_OPENED
+12. TRADE_CLOSED
+13. JOURNAL_COMPLETE
+
+Each lifecycle update should update:
+
+setups.state
+setups.final_status
+setups.updated_at
+15. Setup ID Format
+
+Use deterministic setup IDs.
+
+{symbol}_{date}_{m15_time}_{direction}_{marked_level_price}
+
+Example:
+
+XAUUSD_2026-05-02_0945_LONG_2321.30
+
+Safer version:
+
+XAUUSD_20260502T094500_LONG_232130
+
+This prevents duplicate setup logging if the system restarts.
+
+16. Trade ID Format
+
+Use:
+
+{setup_id}_TRADE_{mt5_position_id}
+
+Example:
+
+XAUUSD_20260502T094500_LONG_232130_TRADE_123456789
+17. What Must Be Logged for Skipped Setups
+
+Skipped setups are your gold mine.
+
+A skipped setup should still log:
+
+symbol
+time
+direction attempted
+stage where rejected
+skip_reason
+EMA context
+structure context
+sweep context if available
+rectangle if available
+AI score if available
+M1 behavior if available
+
+Example:
+
+{
+  "setup_id": "GBPUSD_20260502T101500_SHORT_1.26400",
+  "symbol": "GBPUSD",
+  "direction": "short",
+  "skip_stage": "AI_REVIEW",
+  "skip_reason": "SKIP_AI_REJECTED",
+  "ai_score": 52,
+  "ai_reasoning": "Trend was valid but sweep candle was too large and close position was not clean.",
+  "final_status": "AI_REJECTED"
+}
+18. What Must Be Logged for AI-Approved but Non-Triggered Setups
+
+These are very important.
+
+They tell you whether Claude approves setups that never execute.
+
+Log:
+
+AI score
+Rectangle size
+Number of M1 candles waited
+Whether price touched rectangle
+Whether price entered rectangle
+Maximum movement after rectangle
+Whether price later would have hit theoretical TP/SL
+
+Final status:
+
+AI_APPROVED_NO_M1_FLIP
+
+This later helps answer:
+
+Should the M1 timeout be longer?
+Should the aggressive entry be used?
+Should rectangles expire faster?
+Does Claude overapprove setups that do not flip?
+19. What Must Be Logged for Executed Trades
+
+At entry:
+
+setup_id
+symbol
+direction
+entry time
+entry price
+SL
+TP
+lot size
+risk money
+risk percent
+planned RR
+spread
+slippage
+AI score
+AI reasoning link
+screenshot path
+
+During trade:
+
+MFE
+MAE
+current R
+position duration
+modifications
+errors
+
+At exit:
+
+exit time
+exit price
+exit reason
+gross PnL
+net PnL
+PnL in R
+duration
+screenshot path
+20. AI Feedback Dataset
+
+For future model improvement, create a view or export where each row is one setup.
+
+Fields:
+
+setup_id
+symbol
+session
+direction
+trend_valid
+ema_slope
+structure_score
+inside_imbalance
+session_high_low
+sweep_depth_points
+wick_size_points
+wick_to_range_ratio
+close_position
+rectangle_size_points
+ai_score
+ai_decision
+m1_flip_confirmed
+trade_taken
+pnl_r
+final_status
+
+Create SQL view:
+
+CREATE VIEW IF NOT EXISTS ai_training_view AS
+SELECT
+    s.setup_id,
+    s.symbol,
+    s.session,
+    s.direction,
+    s.trend_valid,
+    s.ema_slope_points,
+    s.structure_score,
+    s.inside_imbalance,
+    s.level_is_session_high_low,
+    s.sweep_depth_points,
+    s.wick_size_points,
+    s.wick_to_range_ratio,
+    s.close_position,
+    s.rectangle_size_points,
+    s.ai_score,
+    s.ai_decision,
+    s.m1_flip_confirmed,
+    CASE WHEN t.trade_id IS NOT NULL THEN 1 ELSE 0 END AS trade_taken,
+    t.pnl_r,
+    s.final_status
+FROM setups s
+LEFT JOIN trades t ON s.setup_id = t.setup_id;
+
+This is the dataset you later use to measure whether AI scoring is useful.
+
+21. Key Reports
+Report 1 — AI Score vs Result
+
+Purpose:
+
+Find out whether high AI scores actually perform better.
+
+Buckets:
+
+0-49
+50-59
+60-69
+70-79
+80-89
+90-100
+
+Metrics:
+
+number of setups
+number of trades
+win rate
+average R
+median R
+max drawdown
+TP hit rate
+SL hit rate
+Report 2 — Session Performance
+
+Purpose:
+
+Find best trading session for this strategy.
+
+Group by:
+
+Asia
+London
+New York
+Overlap
+Other
+
+Metrics:
+
+setups
+AI approvals
+trades
+win rate
+average R
+net R
+average AI score
+Report 3 — Symbol Performance
+
+Purpose:
+
+Find which instruments produce clean rectangle sweeps.
+
+Group by:
+
+EURUSD
+GBPUSD
+XAUUSD
+US100
+BTCUSD
+etc.
+
+Metrics:
+
+setups
+trades
+win rate
+average R
+max adverse excursion
+average spread
+average rectangle size
+Report 4 — Rectangle Size Performance
+
+Purpose:
+
+Find best rectangle size range.
+
+Buckets:
+
+small
+medium
+large
+too large
+
+Metrics:
+
+win rate
+average R
+M1 flip probability
+SL hit probability
+Report 5 — Sweep Quality Performance
+
+Purpose:
+
+Find which sweep types work best.
+
+Group by:
+
+sweep depth
+wick size
+wick-to-range ratio
+close position
+
+Questions:
+
+Do deep sweeps perform worse?
+Do large wick rejections perform better?
+Does close position predict success?
+Report 6 — AI Rejection Audit
+
+Purpose:
+
+Check whether Claude rejected trades that would have won.
+
+For every rejected setup, later simulate:
+
+Did M1 flip happen anyway?
+Would fixed 3R TP have hit first?
+Would SL have hit first?
+
+This is extremely valuable because it tells you if Claude is too strict.
+
+22. Journal Event Examples
+A. Mechanically valid setup
+{
+  "event": "SETUP_CREATED",
+  "setup_id": "XAUUSD_20260502T094500_LONG_232130",
+  "symbol": "XAUUSD",
+  "direction": "long",
+  "state": "M15_WEAKNESS_CONFIRMED",
+  "rectangle_low": 2320.80,
+  "rectangle_high": 2323.50,
+  "created_at": "2026-05-02T09:45:01+02:00"
+}
+B. AI approved
+{
+  "event": "AI_REVIEW_COMPLETE",
+  "setup_id": "XAUUSD_20260502T094500_LONG_232130",
+  "ai_score": 82,
+  "ai_decision": "approve",
+  "state": "RECTANGLE_ACTIVE"
+}
+C. M1 flip confirmed
+{
+  "event": "M1_FLIP_CONFIRMED",
+  "setup_id": "XAUUSD_20260502T094500_LONG_232130",
+  "m1_time": "2026-05-02T09:52:00+02:00",
+  "m1_close": 2323.90,
+  "entry_signal": "BUY"
+}
+D. Trade closed
+{
+  "event": "TRADE_CLOSED",
+  "setup_id": "XAUUSD_20260502T094500_LONG_232130",
+  "trade_id": "XAUUSD_20260502T094500_LONG_232130_TRADE_123456789",
+  "exit_reason": "TP_HIT",
+  "pnl_r": 3.0,
+  "net_pnl_money": 150.00
+}
+23. Python Journal Interface
+
+Create one journal class with clear methods.
+
+class Journal:
+    def create_setup(self, setup: dict) -> None:
+        pass
+
+    def update_setup_state(
+        self,
+        setup_id: str,
+        state: str,
+        final_status: str | None = None,
+        skip_reason: str | None = None,
+        skip_stage: str | None = None,
+    ) -> None:
+        pass
+
+    def log_ai_review(self, setup_id: str, review: dict) -> None:
+        pass
+
+    def log_m1_event(self, setup_id: str, event: dict) -> None:
+        pass
+
+    def create_trade(self, setup_id: str, trade: dict) -> None:
+        pass
+
+    def update_trade_exit(self, trade_id: str, exit_data: dict) -> None:
+        pass
+
+    def log_trade_event(self, trade_id: str, event: dict) -> None:
+        pass
+
+    def log_screenshot(self, setup_id: str, screenshot: dict) -> None:
+        pass
+
+    def log_system_event(self, component: str, severity: str, event_type: str, message: str, raw: dict | None = None) -> None:
+        pass
+
+Keep other modules from writing SQL directly.
+
+Only the Journal layer talks to SQLite.
+
+24. Journal Safety Rules
+
+The journal must be resilient.
+
+Rules:
+
+Never lose a setup because one field is missing.
+Never crash trading because screenshot failed.
+Never block emergency trade close because database write failed.
+Always log raw JSON if structured parsing fails.
+Use transactions for trade creation/update.
+Back up the SQLite file daily.
+
+For write failures:
+
+Write emergency backup JSONL file in /data/emergency_logs/
+Continue system if safe.
+Stop system only if trade state cannot be trusted.
+25. Emergency JSONL Backup
+
+Create:
+
+data/emergency_logs/journal_fallback_2026-05-02.jsonl
+
+Each line:
+
+{"time":"2026-05-02T09:45:01+02:00","event":"SETUP_CREATED","payload":{...}}
+
+This protects you if SQLite locks or corrupts.
+
+26. Backup Policy
+
+Minimum:
+
+Backup journal.sqlite once per day after trading session.
+Keep last 30 daily backups.
+Export CSV weekly.
+
+Folder:
+
+data/backups/
+├── journal_2026-05-02.sqlite
+├── journal_2026-05-03.sqlite
+└── journal_2026-05-04.sqlite
+27. What the Feedback Loop Actually Means
+
+Important: the AI does not “learn” automatically just because the journal exists.
+
+The real feedback loop is:
+
+1. Journal collects setup + AI + outcome data
+2. Reports identify patterns
+3. You adjust:
+   - AI prompt
+   - AI score threshold
+   - rule filters
+   - session filters
+   - symbol filters
+4. Later, after enough data, you can train/fine-tune a model
+
+For the first version, the feedback loop is analytics-driven, not self-training.
+
+28. Minimum Viable Journal for Phase 1
+
+Before AI and live execution, build only:
+
+setups
+system_events
+screenshots
+
+Log:
+
+M15 trend
+marked level
+weakness sweep
+rectangle
+skip reasons
+screenshot path
+
+Then Phase 2 adds:
+
+ai_reviews
+
+Phase 3 adds:
+
+trades
+trade_events
+m1_events
+
+Phase 4 adds:
+
+daily_stats
+reports
+ai_training_view
+29. Final Journal Decision Flow
+Rule Engine sees possible setup
+        ↓
+Journal logs setup attempt
+        ↓
+Mechanical rules confirm or reject
+        ↓
+If rejected → log skip reason
+        ↓
+If valid → log rectangle
+        ↓
+AI reviews setup
+        ↓
+Journal logs score + reasoning
+        ↓
+If AI rejects → final_status = AI_REJECTED
+        ↓
+If AI approves → monitor M1
+        ↓
+Journal logs M1 behavior
+        ↓
+If M1 flips → risk check
+        ↓
+If risk passes → trade created
+        ↓
+Execution events logged
+        ↓
+Trade closes
+        ↓
+Journal logs final result
+        ↓
+Reports update feedback loop

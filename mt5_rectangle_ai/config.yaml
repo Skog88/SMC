@@ -1,0 +1,74 @@
+system:
+  timezone: "Europe/Oslo"
+  mode: "demo"
+  mt5_mcp_server: "C:/mt5-mcp/mt5_mcp_server.py"
+  symbols:
+    - "EURUSD"
+    - "GBPUSD"
+    - "XAUUSD"
+    - "NAS100"
+
+timeframes:
+  setup: "M15"
+  entry: "M1"
+
+# Per-category point values resolve: exact symbol name -> category -> default.
+structure:
+  swing_left: 2
+  swing_right: 2
+  max_level_age_candles: 40
+
+sweep:
+  mode: "wick_close_colour"
+
+rectangle:
+  min_size_points:
+    default: 5
+    forex: 5
+    metals: 200
+    indices: 200
+  max_size_points:
+    default: 200
+    forex: 100
+    metals: 3000
+    indices: 5000
+  expires_after_m1_candles: 30
+
+m1_flip:
+  require_closed_candle: true
+  max_wait_candles: 0
+  flip_buffer_points: 0
+  entry_mode: "market_after_close"
+
+ai:
+  model: "claude-sonnet-4-6"
+  min_confidence: 60
+
+risk:
+  risk_per_trade_percent: 0.5
+  max_daily_loss_percent: 2.0
+  max_open_positions: 2
+  max_trades_per_symbol_per_day: 1
+  max_total_trades_per_day: 3
+  min_rr: 3.0
+
+execution_filters:
+  max_spread_points:
+    default: 30
+    EURUSD: 15
+    GBPUSD: 20
+    XAUUSD: 60
+    NAS100: 300
+  max_slippage_points:
+    default: 10
+
+sl:
+  buffer_points:
+    default: 5
+    forex: 0
+    metals: 20
+    indices: 50
+
+tp:
+  mode: "fixed_rr"
+  rr: 3.0

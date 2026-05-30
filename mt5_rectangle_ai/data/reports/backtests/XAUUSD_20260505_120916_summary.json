@@ -1,0 +1,16 @@
+{
+  "symbol": "XAUUSD",
+  "start": "2026-04-21T12:09:11",
+  "end": "2026-05-05T12:09:11",
+  "m15_bars": 932,
+  "m1_bars": 13968,
+  "setups": 0,
+  "trades": 0,
+  "wins": 0,
+  "losses": 0,
+  "breakevens": 0,
+  "open_at_end": 0,
+  "win_rate": 0.0,
+  "total_r": 0,
+  "average_r": 0.0
+}

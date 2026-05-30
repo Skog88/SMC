@@ -1,0 +1,16 @@
+{
+  "symbol": "EURUSD",
+  "start": "2026-02-05T21:27:26",
+  "end": "2026-05-06T21:27:26",
+  "m15_bars": 6139,
+  "m1_bars": 91622,
+  "setups": 349,
+  "trades": 348,
+  "wins": 70,
+  "losses": 277,
+  "breakevens": 0,
+  "open_at_end": 1,
+  "win_rate": 20.172910662824208,
+  "total_r": -67.0,
+  "average_r": -0.1925287356321839
+}

@@ -1,0 +1,16 @@
+{
+  "symbol": "GBPUSD",
+  "start": "2026-04-22T23:04:57",
+  "end": "2026-05-06T23:04:57",
+  "m15_bars": 960,
+  "m1_bars": 14350,
+  "setups": 47,
+  "trades": 12,
+  "wins": 4,
+  "losses": 7,
+  "breakevens": 1,
+  "open_at_end": 0,
+  "win_rate": 33.33333333333333,
+  "total_r": 5.0,
+  "average_r": 0.4166666666666667
+}

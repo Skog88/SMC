@@ -1,0 +1,128 @@
+//@version=6
+indicator("Weakness Sweep Detector", overlay=true,
+          max_lines_count=200, max_labels_count=200, max_boxes_count=200)
+
+// ─── Settings ─────────────────────────────────────────────────────────────────
+var string G1 = "Swing Detection"
+swingLeft    = input.int(2,    "Swing Left Bars",      minval=1, maxval=10,  group=G1)
+swingRight   = input.int(2,    "Swing Right Bars",     minval=1, maxval=10,  group=G1)
+maxAge       = input.int(40,   "Max Level Age (bars)", minval=5, maxval=200, group=G1)
+
+var string G2 = "Sweep Filters"
+minWickRatio = input.float(0.25, "Min Wick / Range Ratio",       minval=0.0, maxval=1.0, step=0.05, group=G2)
+minClosePos  = input.float(0.50, "Min Close Position (long ≥)",  minval=0.0, maxval=1.0, step=0.05, group=G2)
+
+var string G3 = "Display"
+boxWidth     = input.int(30,   "Rectangle Width (bars)", minval=5, maxval=200, group=G3)
+showLevel    = input.bool(true, "Show Active Swing Level", group=G3)
+
+// ─── Pivot helpers ────────────────────────────────────────────────────────────
+isPivotLow(o) =>
+    ok = true
+    for i = 1 to swingLeft
+        ok := ok and low[o] < low[o + i]
+    for i = 1 to swingRight
+        ok := ok and low[o] < low[o - i]
+    ok
+
+isPivotHigh(o) =>
+    ok = true
+    for i = 1 to swingLeft
+        ok := ok and high[o] > high[o + i]
+    for i = 1 to swingRight
+        ok := ok and high[o] > high[o - i]
+    ok
+
+// ─── Find most recent valid swing level ───────────────────────────────────────
+// A level is valid if no candle between it and now CLOSED beyond it.
+// A wick through does NOT invalidate it (weakness, not strength).
+findSwingLow() =>
+    p = float(na)
+    for o = swingRight to maxAge
+        if isPivotLow(o)
+            lvl   = low[o]
+            valid = true
+            for j = 1 to o - 1
+                if close[j] < lvl
+                    valid := false
+                    break
+            if valid
+                p := lvl
+                break
+    p
+
+findSwingHigh() =>
+    p = float(na)
+    for o = swingRight to maxAge
+        if isPivotHigh(o)
+            lvl   = high[o]
+            valid = true
+            for j = 1 to o - 1
+                if close[j] > lvl
+                    valid := false
+                    break
+            if valid
+                p := lvl
+                break
+    p
+
+swLow  = findSwingLow()
+swHigh = findSwingHigh()
+
+// ─── Sweep detection ──────────────────────────────────────────────────────────
+cRange = high - low
+
+// Bullish: wick below swing low, close back above, candle must be red (sellers failed)
+bullSweep = false
+if not na(swLow) and cRange > 0 and close < open
+    lWick    = (math.min(open, close) - low) / cRange
+    closePos = (close - low) / cRange
+    bullSweep := low < swLow and close > swLow and
+                 lWick >= minWickRatio and closePos >= minClosePos
+
+// Bearish: wick above swing high, close back below, candle must be green (buyers failed)
+bearSweep = false
+if not na(swHigh) and cRange > 0 and close > open
+    uWick    = (high - math.max(open, close)) / cRange
+    closePos = (close - low) / cRange
+    bearSweep := high > swHigh and close < swHigh and
+                 uWick >= minWickRatio and closePos <= (1.0 - minClosePos)
+
+// ─── Visuals ──────────────────────────────────────────────────────────────────
+
+// Active swing level — continuous line while level is valid
+plot(showLevel and not na(swLow)  ? swLow  : na,
+     "Active Swing Low",  color=color.new(color.blue,   40),
+     style=plot.style_linebr, linewidth=1)
+plot(showLevel and not na(swHigh) ? swHigh : na,
+     "Active Swing High", color=color.new(color.orange, 40),
+     style=plot.style_linebr, linewidth=1)
+
+// Bull sweep — rectangle: bottom = candle low, top = candle close
+if bullSweep
+    box.new(bar_index, close, bar_index + boxWidth, low,
+            bgcolor      = color.new(color.teal, 75),
+            border_color = color.teal,
+            border_width = 1)
+    label.new(bar_index, low, "▲ SWEEP",
+              style     = label.style_label_up,
+              color     = color.new(color.teal, 10),
+              textcolor = color.white,
+              size      = size.small)
+
+// Bear sweep — rectangle: bottom = candle close, top = candle high
+if bearSweep
+    box.new(bar_index, high, bar_index + boxWidth, close,
+            bgcolor      = color.new(color.red, 75),
+            border_color = color.red,
+            border_width = 1)
+    label.new(bar_index, high, "▼ SWEEP",
+              style     = label.style_label_down,
+              color     = color.new(color.red, 10),
+              textcolor = color.white,
+              size      = size.small)
+
+// Candle background highlight
+bgcolor(bullSweep ? color.new(color.teal, 88) :
+        bearSweep ? color.new(color.red,  88) : na,
+        title = "Sweep Candle")

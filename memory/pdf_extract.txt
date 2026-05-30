@@ -1,0 +1,251 @@
+﻿=== PAGE 1 ===
+ 
+ 
+​
+​
+​
+The Only 1 Minute 
+Trading Strategy 
+You’ll Ever Need​
+​
+By Mulham Trading & Edge Skool​
+​
+​
+​
+​
+​
+​
+​
+ 
+
+=== PAGE 2 ===
+2 
+Part 1: The Basics – Timeframes, Pairs, and Indicators 
+1.1 The Rectangle Defined 
+The entire trading plan and strategy are dependent on one thing: the rectangle. This single 
+box defines everything for us: 
+●​ Entry: We will have an entry inside the rectangle. 
+●​ Confirmation: The rectangle provides the necessary confirmation. 
+●​ Stop Loss (SL): The SL is placed above or below the rectangle, depending on if the 
+trade is bullish or bearish. 
+●​ Take Profit (TP): The TP is set way too far from the rectangle, looking for high 
+reward-to-risk setups. 
+1.2 Timeframes: 
+The strategy utilizes the 15-minute (M15) chart and the 1-minute (M1) chart. 
+●​ M15 Chart: Used to identify the high probability setup (M15 highs and lows). 
+●​ M1 Chart: Used for the precise entry. The 1-minute decides everything—you either 
+get the entry, or you don’t. 
+1.3 Pairs and Trading Sessions 
+This strategy is repeatable and simple. It is highly versatile and works on all pairs: 
+●​ Forex 
+●​ Crypto 
+●​ Futures, etc. 
+It also works any time of the day when the setup is valid. However, setups are frequently 
+found around key sessions like Asia, London, or New York. 
+1.4 Indicators: Identifying Direction 
+To ensure we are trading on the right side of the market, we must first identify the direction. 
+EdgeSkool.Net 
+
+=== PAGE 3 ===
+3 
+The most basic and mechanical way to identify direction is by using the Exponential Moving 
+Average (EMA): 
+1.​ Indicator Selection: Use either the 50 EMA or the 200 EMA. The 200 EMA generally 
+gives the overall trend and lasts longer, while the 50 EMA is more sensitive.​
+ 
+2.​ The Direction Rule: 
+○​ If the price is above the moving average, we look for longs (buys), as that’s 
+where the continuation is going to be. 
+○​ If the price is below the moving average, we look for shorts (sells). 
+3.​ Structure Check: We must have valid structure above or below the EMA; we should 
+not be ranging just around the moving average. 
+ 
+ 
+Part 2: Foundation 
+2.1 Continuation is Key 
+For this specific strategy, we focus only on continuation setups. Continuation means a setup 
+with the trend. 
+●​ We avoid reversals (setups against the trend). 
+●​ In an Uptrend: We focus on the Lows. 
+●​ In a Downtrend: We focus on the Highs. 
+EdgeSkool.Net 
+
+=== PAGE 4 ===
+4 
+We are looking for highs or lows that align with the trend and have a key level (like an 
+imbalance) below or above them.​
+​
+ 
+​
+2.2 Strength vs. Weakness: The Trigger 
+The setup relies entirely on identifying Weakness in the market. 
+●​ Strength is a continuation—when the price displaces below a low and closes below 
+(or above a high and closes above). This signals disrespect of the level. 
+●​ Weakness (Our Focus) is when price goes lower (or higher) but experiences a 
+rejection and fails to close beyond that low/high, closing instead above the low (in a 
+bullish scenario) or below the high (in a bearish scenario). This signals a potential 
+reversal from that specific level. This rejection is sometimes referred to as the wick 
+rejection. 
+ 
+EdgeSkool.Net 
+
+=== PAGE 5 ===
+5 
+2.3 The Highest Probability Filters 
+To maximize quality over quantity, look for M15 highs and lows that meet these criteria: 
+1.​ Inside Imbalances: Highs and lows that reside inside of imbalances or fair value gaps 
+are preferred. 
+2.​ Sessions Highs and Lows: Focus on highs and lows of sessions (Asia, London, or 
+New York). 
+ 
+Part 3: The 3-Steps 
+The main goal is catching M15 high-probability liquidity sweeps (fakeouts) using the M1 
+chart.​
+​
+Step 1: Mark the Valid M15 High or Low 
+Identify a high or low on the 15-minute chart that satisfies all conditions: 
+●​ It must be with the trend. 
+●​ It should ideally be inside an imbalance. 
+●​ It must be part of a clean structure (e.g., following a structure break). 
+ 
+ 
+EdgeSkool.Net 
+
+=== PAGE 6 ===
+6 
+Step 2: Wait for Price to Sweep and Close (The Weakness Trigger) 
+Wait for the price to sweep past the marked high or low, but then fail to close convincingly. 
+●​ Bullish Scenario: We want to see the price take the low but then have the candle 
+close above the low. This closure gives us the potential setup. 
+●​ Bearish Scenario: We want to see the high taken by a bullish candle (if the move 
+hasn't started yet), and then the candle must close below the high (signaling 
+weakness). 
+This closure creates the wick rejection. Without this trigger, we do not enter.​
+​
+ 
+Step 3: Draw the Rectangle and Enter on the M1 Flip 
+Once the M15 candle closes, confirming the weakness (Step 2), we execute the final steps: 
+A. Draw the Rectangle 
+The rectangle is drawn based on the M15 candle that triggered the weakness. 
+●​ Drawing the Rectangle (Bullish Example): Mark the rectangle from the closing price 
+of the M15 candle to the low of that same candle. 
+●​ Drawing the Rectangle (Bearish Example): Mark the rectangle from the closing price 
+of the M15 candle to the high of that same candle.​
+​
+EdgeSkool.Net 
+
+=== PAGE 7 ===
+7 
+​
+ 
+B. Find the M1 Entry Trigger 
+Immediately switch to the 1-minute time frame. The 1-minute price action around the rectangle 
+determines your entry. 
+The Main Entry Trigger (Safest): Wait for a 1-minute candle to close outside (below or 
+above) the rectangle. 
+●​ Bullish Entry: A 1-minute candle must close above the rectangle. This closure is the 
+first step of the "flip" happening and is your signal to enter immediately. 
+●​ Bearish Entry: A 1-minute candle must close below the rectangle. 
+Alternative/Aggressive Entry: You can sometimes take a riskier entry as price goes inside the 
+rectangle before the closure if there is a valid key level inside it anticipating reversal. 
+C. Setting Stop Loss (SL) and Take Profit (TP) 
+●​ Stop Loss (SL): Place the SL slightly above the high or below the low that formed 
+the rectangle. 
+●​ Take Profit (TP): The TP is set way too far from the rectangle. You can target the next 
+strong key level visible on the M15 chart, or simply aim for a 3:1 RR minimum. 
+EdgeSkool.Net 
+
+=== PAGE 8 ===
+8 
+Self-Discipline Tip: After entry, it is highly recommended to only focus on the 15-minute time 
+frame to ignore all the noise on the one minute time frame. 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+EdgeSkool.Net 
+
+=== PAGE 9 ===
+9 
+Simple Checklist 
+Use this checklist before every trade to confirm you have a high-probability setup: 
+Direction 
+Is the price aligned with the 50/200 EMA? (Above=Longs, 
+Below=Shorts) 
+Yes/No 
+Structure 
+Is there a valid structure (clear trend/break structure) 
+supporting the move? 
+ 
+Continuation 
+Are we focusing on Continuation (Lows in Uptrend, Highs in 
+Downtrend)? 
+ 
+Filter 1 
+Is the M15 High/Low inside an Imbalance or a Session 
+High/Low? 
+ 
+M15 Trigger 
+Did price sweep the M15 High/Low and CLOSE with 
+Weakness (rejection wick)? 
+ 
+Rectangle 
+Is the rectangle correctly drawn from the closing price to the 
+high/low of the M15 trigger candle? 
+ 
+Risk 
+Management 
+Is the Stop Loss placed slightly above/below the high/low? 
+ 
+Reward 
+Is the Take Profit targeting 3:1 minimum or the next M15 key 
+level? 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+EdgeSkool.Net 
+
+=== PAGE 10 ===
+10 
+Final Word 
+ 
+You now have a complete trading strategy. The rectangle method works on any pair, any 
+timeframe, and you can start using it immediately. 
+ 
+Many ask, "Is this all I need?" It depends. This method works best for continuation setups on 
+M15 and M1 with clear structure and valid highs/lows. 
+ 
+When conditions change, trading higher timeframes, or if you want a universal strategy, the 
+Edge Model is your solution. I built it over seven years, and the rectangle strategy is just one 
+part of it. 
+ 
+Inside Edge Skool, you’ll get: 
+●​ The full Edge Model framework 
+●​ Community of like-minded traders 
+●​ Personal support from Mulham 
+●​ Multiple strategies & patterns (FVG, SNR respect, CCT) 
+●​ Live workshops, analysis, and forecasts 
+ 
+All this is valued over $8,500, available now for 80% off. If you’re serious about mastering 
+trading, check it out → www.edgeskool.net 
+ 
+—Mulham 
+ 
+EdgeSkool.Net 
+

@@ -1,0 +1,14 @@
+{
+  "symbol": "EURUSD",
+  "description": "Euro vs US Dollar",
+  "currency_base": "EUR",
+  "currency_profit": "USD",
+  "contract_size": 100000.0,
+  "min_lot": 0.01,
+  "max_lot": 100.0,
+  "lot_step": 0.01,
+  "point": 1e-05,
+  "digits": 5,
+  "spread_pips": 0.6,
+  "pip_value_per_lot": 10.0
+}

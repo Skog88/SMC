@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs
+*.log
+logs/
+
+# Database
+*.sqlite
+*.db
+
+# Tool internals
+.telecodex/
+
+# Environment
+.env
+*.env
