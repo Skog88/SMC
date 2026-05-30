@@ -75,6 +75,7 @@ def run_symbol_backtest(
     ma_period: int = 60,
     breakeven_r: float = 2.0,
     data_dir: Path | None = None,
+    disable_htf: bool = False,
 ) -> tuple[BacktestSummary, list[BacktestTrade]]:
     if data_dir is not None:
         engine = LocalDataEngine(data_dir)
@@ -134,8 +135,11 @@ def run_symbol_backtest(
         history = warm_m15[: index + 1]
 
         # H4 candles confirmed before the current M15 bar (4h close offset prevents look-ahead)
-        h4_cutoff = candle.time - timedelta(hours=4)
-        h4_history = [c for c in all_h4 if c.time <= h4_cutoff] if all_h4 else None
+        if disable_htf or not all_h4:
+            h4_history = None
+        else:
+            h4_cutoff = candle.time - timedelta(hours=4)
+            h4_history = [c for c in all_h4 if c.time <= h4_cutoff]
 
         state = SymbolRuleState(symbol, meta.point, rule_config)
         try:
@@ -346,6 +350,7 @@ def main(argv: Iterable[str] | None = None) -> None:
     parser.add_argument("--ma-period", type=int, default=60, help="MA period for trend filter (0 = disabled).")
     parser.add_argument("--breakeven-r", type=float, default=2.0, help="Move SL to entry when trade reaches this multiple of R (0 = disabled).")
     parser.add_argument("--data-dir", default=None, help="Load candles from cached CSVs instead of MT5 (path to historical data folder).")
+    parser.add_argument("--no-htf", action="store_true", help="Disable HTF bias filter (Phase 1) for baseline comparison.")
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     fixed_end = datetime.fromisoformat(args.end_time) if args.end_time else None
@@ -359,6 +364,7 @@ def main(argv: Iterable[str] | None = None) -> None:
         args.ma_period,
         args.breakeven_r,
         data_dir,
+        disable_htf=args.no_htf,
     )
     summary_path, trades_path = write_outputs(args.symbol.upper(), summary, trades)
     print(json.dumps(asdict(summary), indent=2))

@@ -16,7 +16,10 @@ from strategy import skip_reasons as reasons
 from strategy.m1_flip import M1FlipConfig, detect_m1_flip
 from strategy.rectangle import RectangleConfig, build_rectangle
 from strategy.signal_builder import build_entry_signal, build_setup_object
-from strategy.structure_detector import StructureConfig, find_continuation_level
+from strategy.structure_detector import (
+    OrderBlock, OrderBlockConfig, StructureConfig,
+    find_continuation_level, identify_order_block,
+)
 from strategy.sweep_detector import SweepConfig, detect_weakness_sweep
 
 
@@ -30,6 +33,7 @@ class RuleEngineConfig:
     rectangle: RectangleConfig = field(default_factory=RectangleConfig)
     m1_flip: M1FlipConfig = field(default_factory=M1FlipConfig)
     htf_config: HTFConfig = field(default_factory=HTFConfig)
+    ob_config: OrderBlockConfig = field(default_factory=OrderBlockConfig)
     ai_model: str = "claude-sonnet-4-6"
     ai_min_confidence: int = 60
     sl_buffer_points: float = 5.0
@@ -103,9 +107,24 @@ class SymbolRuleState:
                 last_skip = sweep.skip_reason
                 continue
 
+            # ── Order Block check (Phase 2) ───────────────────────────────────
+            ob = identify_order_block(m15_candles, direction, self.point, self.config.ob_config)
+            if not ob.ob_valid:
+                if self.config.ob_config.require_ob:
+                    last_skip = ob.skip_reason
+                    continue
+            # OB is always logged even if filter is off
+
             rectangle = build_rectangle(trigger, direction, self.point, self.config.rectangle)
             if not rectangle.valid:
                 return RuleDecision(reasons.NO_SETUP, skip_reason=rectangle.skip_reason)
+
+            # OB–rectangle overlap (confluence signal, not a hard filter)
+            ob_rectangle_overlap = (
+                ob.ob_valid
+                and ob.ob_high > rectangle.low
+                and ob.ob_low < rectangle.high
+            )
 
             vision_review = {"approved": True, "confidence": 100, "reason": "auto_approved"}
             if use_vision:
@@ -121,7 +140,10 @@ class SymbolRuleState:
                         skip_reason=str(vision_review.get("reason", reasons.SKIP_AI_REJECTED)),
                     )
 
-            setup = build_setup_object(self.symbol, structure, sweep, rectangle, vision_review, htf_bias)
+            setup = build_setup_object(
+                self.symbol, structure, sweep, rectangle, vision_review,
+                htf_bias, ob, ob_rectangle_overlap,
+            )
             self.state = "RECTANGLE_ACTIVE"
             self.active_setup = setup
             self.active_rectangle = rectangle

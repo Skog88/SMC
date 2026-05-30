@@ -19,6 +19,17 @@ htf:
   max_bos_age_candles: 50
   require_confirmed_bos: true
 
+order_block:
+  max_lookback_candles: 20
+  require_ob: true
+  require_unmitigated: true
+  max_mitigation_count: 1
+  min_ob_size_points:
+    default: 5
+    forex: 5
+    metals: 50
+    indices: 100
+
 # Per-category point values resolve: exact symbol name -> category -> default.
 structure:
   swing_left: 2

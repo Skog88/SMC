@@ -11,7 +11,7 @@ from core.symbol_config import get_symbol_setting
 from strategy.m1_flip import M1FlipConfig
 from strategy.rectangle import RectangleConfig
 from strategy.state_machine import RuleEngineConfig
-from strategy.structure_detector import StructureConfig
+from strategy.structure_detector import OrderBlockConfig, StructureConfig
 from strategy.sweep_detector import SweepConfig
 
 
@@ -55,6 +55,15 @@ def load_rule_engine_config(symbol: str, config_path: Path | None = None) -> Rul
         entry_mode=str(m1_raw.get("entry_mode", "market_after_close")),
     )
 
+    ob_raw = raw.get("order_block", {})
+    ob_config = OrderBlockConfig(
+        max_lookback_candles=int(ob_raw.get("max_lookback_candles", 20)),
+        require_ob=bool(ob_raw.get("require_ob", True)),
+        require_unmitigated=bool(ob_raw.get("require_unmitigated", True)),
+        max_mitigation_count=int(ob_raw.get("max_mitigation_count", 1)),
+        min_ob_size_points=_resolve(ob_raw.get("min_ob_size_points", 5), symbol),
+    )
+
     htf_raw = raw.get("htf", {})
     htf_config = HTFConfig(
         timeframe=str(htf_raw.get("timeframe", "H4")),
@@ -76,6 +85,7 @@ def load_rule_engine_config(symbol: str, config_path: Path | None = None) -> Rul
         rectangle=rectangle,
         m1_flip=m1_flip,
         htf_config=htf_config,
+        ob_config=ob_config,
         ai_model=ai_model,
         ai_min_confidence=min_confidence,
         sl_buffer_points=sl_buffer,

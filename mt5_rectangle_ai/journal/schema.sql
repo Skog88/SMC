@@ -80,6 +80,14 @@ CREATE TABLE IF NOT EXISTS setups (
     htf_last_swing_low REAL,
     htf_swing_midpoint REAL,
 
+    ob_origin_time TEXT,
+    ob_high REAL,
+    ob_low REAL,
+    ob_timeframe TEXT,
+    ob_mitigation_count INTEGER,
+    ob_fvg_overlap INTEGER,
+    ob_rectangle_overlap INTEGER,
+
     skip_reason TEXT,
     skip_stage TEXT,
 

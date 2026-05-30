@@ -9,7 +9,7 @@ from core.candle_builder import Candle
 from core.htf_engine import HTFBias
 from strategy.m1_flip import M1FlipResult
 from strategy.rectangle import Rectangle
-from strategy.structure_detector import StructureResult
+from strategy.structure_detector import OrderBlock, StructureResult
 from strategy.sweep_detector import SweepResult
 
 
@@ -24,6 +24,8 @@ def build_setup_object(
     rectangle: Rectangle,
     vision_review: dict[str, Any] | None = None,
     htf_bias: HTFBias | None = None,
+    ob: OrderBlock | None = None,
+    ob_rectangle_overlap: bool = False,
 ) -> dict[str, Any]:
     if structure.marked_level is None:
         raise ValueError("cannot build setup object without marked level")
@@ -65,6 +67,16 @@ def build_setup_object(
             "last_swing_high": htf_bias.last_swing_high if htf_bias else None,
             "last_swing_low": htf_bias.last_swing_low if htf_bias else None,
             "swing_midpoint": htf_bias.swing_midpoint if htf_bias else None,
+        },
+        "order_block": {
+            "ob_high": ob.ob_high if ob else None,
+            "ob_low": ob.ob_low if ob else None,
+            "ob_origin_time": ob.ob_origin_time.isoformat() if ob and ob.ob_origin_time else None,
+            "ob_timeframe": ob.ob_timeframe if ob else None,
+            "ob_mitigation_count": ob.ob_mitigation_count if ob else None,
+            "ob_fvg_overlap": ob.ob_fvg_overlap if ob else False,
+            "ob_valid": ob.ob_valid if ob else False,
+            "ob_rectangle_overlap": ob_rectangle_overlap,
         },
         "status": "RECTANGLE_ACTIVE",
     }
