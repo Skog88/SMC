@@ -19,9 +19,7 @@ from typing import Iterable
 from core.candle_builder import Candle
 
 from core.config_loader import load_rule_engine_config
-from core.data_engine import Mt5DataEngine
 from core.local_data_engine import LocalDataEngine
-from execution.position_sizer import symbol_meta_from_mcp
 from strategy import skip_reasons as decisions
 from strategy.state_machine import RuleDecision, SymbolRuleState
 
@@ -78,11 +76,24 @@ def run_symbol_backtest(
     breakeven_r: float = 2.0,
     data_dir: Path | None = None,
 ) -> tuple[BacktestSummary, list[BacktestTrade]]:
-    engine: Mt5DataEngine | LocalDataEngine = (
-        LocalDataEngine(data_dir) if data_dir is not None else Mt5DataEngine()
-    )
+    if data_dir is not None:
+        engine = LocalDataEngine(data_dir)
+    else:
+        from core.data_engine import Mt5DataEngine  # only needed for live MT5 mode
+        engine = Mt5DataEngine()
     info = engine.symbol_info(symbol)
-    meta = symbol_meta_from_mcp(info)
+    from execution.position_sizer import SymbolMeta
+    point = float(info.get("point", 0.00001))
+    meta = SymbolMeta(
+        symbol=str(info.get("name", symbol)),
+        trade_tick_size=point,
+        trade_tick_value=point,
+        volume_min=0.01,
+        volume_max=100.0,
+        volume_step=0.01,
+        digits=int(info.get("digits", 5)),
+        point=point,
+    )
     rule_config = load_rule_engine_config(symbol)
     if sl_buffer_points is not None:
         rule_config = replace(rule_config, sl_buffer_points=sl_buffer_points)
