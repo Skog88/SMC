@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 
 from core.htf_engine import HTFConfig, PremiumDiscountConfig
+from strategy.confluence_scorer import ConfluenceWeights
 from core.sessions import KillZoneConfig
 from core.symbol_config import get_symbol_setting
 from strategy.liquidity_detector import LiquidityConfig
@@ -57,6 +58,26 @@ def load_rule_engine_config(symbol: str, config_path: Path | None = None) -> Rul
         flip_buffer_points=float(m1_raw.get("flip_buffer_points", 0)),
         entry_mode=str(m1_raw.get("entry_mode", "market_after_close")),
     )
+
+    cw_raw = raw.get("confluence_weights", {})
+    confluence_weights = ConfluenceWeights(
+        htf_bias_aligned=float(cw_raw.get("htf_bias_aligned", 20)),
+        in_kill_zone=float(cw_raw.get("in_kill_zone", 20)),
+        swept_liquidity_pool=float(cw_raw.get("swept_liquidity_pool", 15)),
+        ob_unmitigated=float(cw_raw.get("ob_unmitigated", 15)),
+        ob_fvg_overlap=float(cw_raw.get("ob_fvg_overlap", 10)),
+        premium_discount_correct=float(cw_raw.get("premium_discount_correct", 10)),
+        ob_rectangle_overlap=float(cw_raw.get("ob_rectangle_overlap", 5)),
+        ob_h4_timeframe=float(cw_raw.get("ob_h4_timeframe", 10)),
+        claude_clean_sweep=float(cw_raw.get("claude_clean_sweep", 5)),
+        claude_ob_visible=float(cw_raw.get("claude_ob_visible", 5)),
+        claude_draw_visible=float(cw_raw.get("claude_draw_visible", 5)),
+        claude_would_trade=float(cw_raw.get("claude_would_trade", -999)),
+        ob_mitigation_count_1=float(cw_raw.get("ob_mitigation_count_1", -10)),
+        ob_mitigation_count_2plus=float(cw_raw.get("ob_mitigation_count_2plus", -25)),
+        outside_kill_zone=float(cw_raw.get("outside_kill_zone", -30)),
+    )
+    min_confluence_score = float(raw.get("confluence", {}).get("min_score", 40))
 
     pd_raw = raw.get("premium_discount", {})
     pd_config = PremiumDiscountConfig(
@@ -130,6 +151,8 @@ def load_rule_engine_config(symbol: str, config_path: Path | None = None) -> Rul
         ai_min_confidence=min_confidence,
         ai_min_confluence=min_confluence,
         ai_require_would_trade=require_would_trade,
+        confluence_weights=confluence_weights,
+        min_confluence_score=min_confluence_score,
         sl_buffer_points=sl_buffer,
         planned_rr=planned_rr,
     )

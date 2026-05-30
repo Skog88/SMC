@@ -80,6 +80,10 @@ CREATE TABLE IF NOT EXISTS setups (
     htf_last_swing_low REAL,
     htf_swing_midpoint REAL,
 
+    confluence_score REAL,
+    confluence_score_breakdown TEXT,
+    min_score_required REAL,
+
     zone_type TEXT,
     distance_from_midpoint_pct REAL,
 

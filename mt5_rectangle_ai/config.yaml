@@ -19,6 +19,26 @@ htf:
   max_bos_age_candles: 50
   require_confirmed_bos: true
 
+confluence:
+  min_score: 40
+
+confluence_weights:
+  htf_bias_aligned: 20
+  in_kill_zone: 20
+  swept_liquidity_pool: 15
+  ob_unmitigated: 15
+  ob_fvg_overlap: 10
+  premium_discount_correct: 10
+  ob_rectangle_overlap: 5
+  ob_h4_timeframe: 10
+  claude_clean_sweep: 5
+  claude_ob_visible: 5
+  claude_draw_visible: 5
+  claude_would_trade: -999
+  ob_mitigation_count_1: -10
+  ob_mitigation_count_2plus: -25
+  outside_kill_zone: -30
+
 premium_discount:
   enabled: true
   hard_filter: false

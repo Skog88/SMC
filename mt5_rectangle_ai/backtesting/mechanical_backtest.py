@@ -48,6 +48,7 @@ class BacktestTrade:
     ai_score: int
     ai_confluence: int
     ai_would_trade: bool
+    confluence_score: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -341,6 +342,7 @@ def simulate_trade(
         ai_score=int(setup.get("vision_review", {}).get("confidence", 100)),
         ai_confluence=int((text_ai_result or {}).get("confluence_count", -1)),
         ai_would_trade=bool((text_ai_result or {}).get("would_trade", True)),
+        confluence_score=float(setup.get("confluence_score", 0.0)),
     )
 
 

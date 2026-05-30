@@ -18,6 +18,9 @@ from core.htf_engine import (
 )
 from core.sessions import KillZoneConfig, KillZoneResult, is_kill_zone
 from strategy import skip_reasons as reasons
+from strategy.confluence_scorer import (
+    ConfluenceWeights, build_confluence_input, compute_confluence_score,
+)
 from strategy.liquidity_detector import LiquidityConfig, LiquidityTag, classify_swept_level
 from strategy.m1_flip import M1FlipConfig, detect_m1_flip
 from strategy.rectangle import RectangleConfig, build_rectangle
@@ -47,6 +50,8 @@ class RuleEngineConfig:
     ai_min_confidence: int = 60          # v2 legacy threshold
     ai_min_confluence: int = 5           # v3 minimum criteria out of 7
     ai_require_would_trade: bool = True  # v3 auto-reject if would_trade=False
+    confluence_weights: ConfluenceWeights = field(default_factory=ConfluenceWeights)
+    min_confluence_score: float = 40.0
     sl_buffer_points: float = 5.0
     planned_rr: float = 3.0
 
@@ -181,28 +186,30 @@ class SymbolRuleState:
                     setup_context=setup_ctx,
                     model=self.config.ai_model,
                 )
-                # v3 approval: would_trade=False is auto-reject; confluence below threshold rejects
-                # v2 fallback: use approved + confidence
-                rejected = False
-                if "would_trade" in vision_review:
-                    if self.config.ai_require_would_trade and not vision_review.get("would_trade"):
-                        rejected = True
-                    elif int(vision_review.get("confluence_count", 0)) < self.config.ai_min_confluence:
-                        rejected = True
-                elif not vision_review.get("approved") or int(vision_review.get("confidence", 0)) < self.config.ai_min_confidence:
-                    rejected = True
-
-                if rejected:
-                    self.state = "AI_REJECTED"
-                    return RuleDecision(
-                        reasons.SETUP_REJECTED_BY_AI,
-                        skip_reason=str(vision_review.get("reason", reasons.SKIP_AI_REJECTED)),
-                    )
-
+            # ── Confluence scoring (Phase 7) ─────────────────────────────────
+            # Build setup object first so build_confluence_input can read it
             setup = build_setup_object(
                 self.symbol, structure, sweep, rectangle, vision_review,
                 htf_bias, ob, ob_rectangle_overlap, liq_tag, kz_result, pd_result,
             )
+
+            confluence_inp = build_confluence_input(setup, vision_review)
+            confluence_result = compute_confluence_score(
+                confluence_inp, self.config.confluence_weights,
+            )
+
+            # Embed score and breakdown into setup for journaling
+            setup["confluence_score"] = confluence_result.score
+            setup["confluence_score_breakdown"] = confluence_result.breakdown_json()
+            setup["min_score_required"] = self.config.min_confluence_score
+
+            if confluence_result.auto_rejected or confluence_result.score < self.config.min_confluence_score:
+                self.state = "CONFLUENCE_SCORE_TOO_LOW"
+                return RuleDecision(
+                    reasons.NO_SETUP,
+                    skip_reason=reasons.SKIP_CONFLUENCE_SCORE_TOO_LOW,
+                )
+
             self.state = "RECTANGLE_ACTIVE"
             self.active_setup = setup
             self.active_rectangle = rectangle
