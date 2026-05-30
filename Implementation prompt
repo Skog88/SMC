@@ -1,0 +1,238 @@
+Implementation prompt:
+
+You are porting an existing Python trading system from MT5 (MetaTrader5 library) to cTrader Open API (ctrader-open-api v0.9.2). The strategy logic stays exactly the same — only the execution layer changes. Your job is to replace every MT5 API call with the cTrader equivalent, and wire up the Twisted reactor architecture.
+
+This is in a new git repository. Do not reference or copy anything from other repos.
+
+WHAT CHANGES VS MT5
+MT5 is synchronous. You call mt5.copy_rates_from_pos(), it blocks and returns data. cTrader is async (Twisted). You send a protobuf request on a TCP connection and wait for a response message on a callback. Everything runs through a reactor thread.
+
+The pattern that works:
+
+Run the Twisted reactor in a background thread
+Main strategy loop runs in the main thread
+Use a queue.Queue to bridge them: main thread calls reactor.callFromThread(client.send, req) then blocks on queue.get(timeout=10)
+The message callback puts responses into the queue
+import queue, threading
+from twisted.internet import reactor
+from ctrader_open_api import Client, Protobuf, TcpProtocol, EndPoints
+
+_response_queue: queue.Queue = queue.Queue()
+_client = None
+
+def _wait_for(payload_type: int, timeout: float = 10.0):
+    """Block main thread until a response of the expected type arrives."""
+    try:
+        while True:
+            msg = _response_queue.get(timeout=timeout)
+            if msg is None:  # error sentinel
+                return None
+            if Protobuf.extract(msg).payloadType == payload_type:
+                return Protobuf.extract(msg)
+            # wrong type → discard and keep waiting
+    except queue.Empty:
+        return None
+
+def _on_message_received(client, message):
+    _response_queue.put(message)
+
+def _on_disconnected(client, reason=None):   # ← must accept reason arg
+    sys.exit(1)  # systemd Restart=always will relaunch the process
+
+_reactor_thread = threading.Thread(target=reactor.run, kwargs={"installSignalHandlers": False}, daemon=True)
+_reactor_thread.start()
+MT5 → cTrader TRANSLATION TABLE
+Connect / authenticate
+MT5:
+
+mt5.initialize(login=LOGIN, password=PASSWORD, server=SERVER)
+cTrader:
+
+# 1. TCP connect
+client = Client(EndPoints.PROTOBUF_DEMO_HOST, EndPoints.PROTOBUF_PORT, TcpProtocol)
+client.setMessageReceivedCallback(_on_message_received)
+client.setDisconnectedCallback(_on_disconnected)
+reactor.callFromThread(client.startService)
+
+# 2. App auth
+req = ProtoOAApplicationAuthReq()
+req.clientId     = CLIENT_ID
+req.clientSecret = CLIENT_SECRET
+reactor.callFromThread(client.send, req)
+_wait_for(2101)   # ProtoOAApplicationAuthRes
+
+# 3. Account auth
+req = ProtoOAAccountAuthReq()
+req.ctidTraderAccountId = ACCOUNT_ID   # ← NOT the broker login number, see below
+req.accessToken         = ACCESS_TOKEN
+reactor.callFromThread(client.send, req)
+_wait_for(2103)   # ProtoOAAccountAuthRes
+CRITICAL: ctidTraderAccountId is cTrader's internal ID, NOT the broker login number. Discover it once:
+
+req = ProtoOAGetAccountListByAccessTokenReq()
+req.accessToken = ACCESS_TOKEN
+reactor.callFromThread(client.send, req)
+res = _wait_for(2150)
+for acct in res.ctidTraderAccount:
+    print(acct.ctidTraderAccountId, acct.traderLogin)
+# Store the matching ctidTraderAccountId in /etc/environment as CTRADER_ACCOUNT_ID
+Get symbol info (replaces mt5.symbol_info())
+# Step 1: get symbol ID from the symbols list
+req = ProtoOASymbolsListReq()
+req.ctidTraderAccountId = ACCOUNT_ID
+reactor.callFromThread(client.send, req)
+res = _wait_for(2115)   # ProtoOASymbolsListRes — NOT 2114
+
+symbol_id = next(s.symbolId for s in res.symbol if s.symbolName == SYMBOL)
+
+# Step 2: get full symbol details
+req = ProtoOASymbolByIdReq()
+req.ctidTraderAccountId = ACCOUNT_ID
+req.symbolId.append(symbol_id)
+reactor.callFromThread(client.send, req)
+res = _wait_for(2117)   # ProtoOASymbolByIdRes — NOT 2116
+
+sym        = res.symbol[0]
+lot_size   = sym.lotSize       # units per lot, e.g. 10_000_000 for EURUSD
+digits     = sym.digits        # price decimal places, e.g. 5 for EURUSD
+pip_pos    = sym.pipPosition   # pip decimal position, e.g. 4 for EURUSD
+min_volume = sym.minVolume     # minimum order size in cTrader units
+step_volume = sym.stepVolume   # volume step
+Get bar data (replaces mt5.copy_rates_from_pos())
+MT5:
+
+bars = mt5.copy_rates_from_pos(SYMBOL, mt5.TIMEFRAME_M1, 0, 500)
+df = pd.DataFrame(bars)
+cTrader:
+
+from ctrader_open_api.messages.OpenApiCommonMessages_pb2 import ProtoOATrendbarPeriod
+
+req = ProtoOAGetTrendbarsReq()
+req.ctidTraderAccountId = ACCOUNT_ID
+req.symbolId            = symbol_id
+req.period              = ProtoOATrendbarPeriod.M1   # or M15
+req.count               = 500
+reactor.callFromThread(client.send, req)
+res = _wait_for(2138)   # ProtoOATrendbarsRes
+
+divisor = 10 ** digits
+rows = []
+for bar in res.trendbar:
+    rows.append({
+        "time":  pd.Timestamp(bar.utcTimestampInMinutes * 60, unit="s", tz="UTC"),
+        "open":  (bar.low + bar.deltaOpen)  / divisor,
+        "high":  (bar.low + bar.deltaHigh)  / divisor,
+        "low":    bar.low                   / divisor,
+        "close": (bar.low + bar.deltaClose) / divisor,
+        "tick_volume": bar.volume,
+    })
+df = pd.DataFrame(rows)
+Note: utcTimestampInMinutes is minutes since epoch for M1 bars — multiply by 60 to get seconds.
+
+Get account equity (replaces mt5.account_info().equity)
+req = ProtoOATraderReq()
+req.ctidTraderAccountId = ACCOUNT_ID
+reactor.callFromThread(client.send, req)
+res = _wait_for(2122)   # ProtoOATraderRes — NOT 2121
+
+equity = res.trader.balance / 100.0   # stored in cents
+Place order (replaces mt5.order_send() with TRADE_ACTION_DEAL)
+MT5:
+
+mt5.order_send({
+    "action": mt5.TRADE_ACTION_DEAL,
+    "symbol": SYMBOL,
+    "volume": 0.5,
+    "type": mt5.ORDER_TYPE_BUY,
+    "price": ask,
+    "sl": 1.16437,    # absolute price
+    "tp": 1.16490,    # absolute price
+})
+cTrader — SL and TP are RELATIVE in POINTS, not absolute prices:
+
+price_per_point = 1.0 / (10 ** digits)   # e.g. 0.00001 for EURUSD
+
+sl_points = round(abs(entry - sl_price) / price_per_point)
+tp_points = round(abs(tp_price - entry) / price_per_point)
+volume    = round(qty_lots * lot_size)   # convert lots to cTrader units
+
+req = ProtoOANewOrderReq()
+req.ctidTraderAccountId = ACCOUNT_ID
+req.symbolId            = symbol_id
+req.orderType           = ProtoOAOrderType.MARKET
+req.tradeSide           = ProtoOATradeSide.BUY   # or SELL
+req.volume              = volume
+req.relativeStopLoss    = sl_points   # ← relative, NOT absolute
+req.relativeTakeProfit  = tp_points   # ← relative, NOT absolute
+req.label               = f"CHoCH-{SYMBOL}"   # isolates per symbol in multi-symbol setup
+reactor.callFromThread(client.send, req)
+
+# ── MUST consume TWO events: ACCEPTED then FILLED ──
+res1 = _wait_for(2126)   # first: ORDER_ACCEPTED (executionType=1)
+res2 = _wait_for(2126)   # second: ORDER_FILLED  (executionType=2)
+# Check res2.executionType == 2
+If you only consume one event, the second one contaminates the next _wait_for() call and breaks everything downstream.
+
+Check open position (replaces mt5.positions_get())
+WARNING: ProtoOAReconcileReq is unreliable as a polling mechanism. It frequently times out even when a position is open, causing the system to think it's flat.
+
+Use internal state tracking instead:
+
+_open_position = None   # set after confirmed fill, cleared after confirmed close
+
+def is_position_open() -> bool:
+    return _open_position is not None
+Set _open_position after ORDER_FILLED on open. Clear it after ORDER_FILLED on close. Only use ProtoOAReconcileReq on startup to recover state if the process restarted mid-trade:
+
+req = ProtoOAReconcileReq()
+req.ctidTraderAccountId = ACCOUNT_ID
+reactor.callFromThread(client.send, req)
+res = _wait_for(2125)   # ProtoOAReconcileRes
+# filter by symbolId AND label to find your position
+Modify SL (replaces mt5.order_send() with TRADE_ACTION_SLTP)
+req = ProtoOAAmendPositionSLTPReq()
+req.ctidTraderAccountId = ACCOUNT_ID
+req.positionId          = position_id
+req.stopLoss            = new_sl_price   # absolute price — this field IS absolute here
+req.takeProfit          = existing_tp
+reactor.callFromThread(client.send, req)
+_wait_for(2126)
+Close position (replaces reverse TRADE_ACTION_DEAL)
+MT5 required opening a reverse order to close. cTrader has a dedicated endpoint:
+
+req = ProtoOAClosePositionReq()
+req.ctidTraderAccountId = ACCOUNT_ID
+req.positionId          = position_id
+req.volume              = full_volume   # from the open position record
+reactor.callFromThread(client.send, req)
+res = _wait_for(2126)   # ORDER_FILLED
+PRICE SCALE FACTORS — POSITION openPrice
+Bar prices divide cleanly by 10^digits. But openPrice from ProtoOAPosition uses an additional instrument-specific scale for some symbols. Verify on first trade:
+
+Symbol	Extra scale on openPrice	Divide by
+EURUSD	none	1
+GBPUSD	none	1
+USDJPY	×100	100
+XAUUSD	×1000	1000
+NAS100	×1000 (approx)	verify
+MULTI-SYMBOL SETUP
+Run one process per symbol via separate systemd services:
+
+[Service]
+Environment=CTRADER_SYMBOL=EURUSD
+ExecStart=/path/to/.venv/bin/python main.py
+Restart=always
+RestartSec=10
+Each process uses req.label = f"Strategy-{SYMBOL}" on orders so is_position_open() filters by both symbolId AND label — otherwise EURUSD service would see GBPUSD positions.
+
+Twisted reactor cannot be restarted once stopped. _on_disconnected must call sys.exit(1) and rely on Restart=always in systemd to relaunch cleanly.
+
+CREDENTIALS
+All secrets in /etc/environment (survives reboots, readable by systemd services):
+
+CTRADER_CLIENT_ID=...
+CTRADER_CLIENT_SECRET=...
+CTRADER_ACCESS_TOKEN=...       # ~30 day expiry — refresh when needed
+CTRADER_REFRESH_TOKEN=...
+CTRADER_ACCOUNT_ID=47383896    # the ctidTraderAccountId, NOT the broker login
+CTRADER_SYMBOL goes in the individual service file, not /etc/environment.
