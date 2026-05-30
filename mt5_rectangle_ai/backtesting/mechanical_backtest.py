@@ -46,6 +46,8 @@ class BacktestTrade:
     rectangle_low: float
     rectangle_high: float
     ai_score: int
+    ai_confluence: int
+    ai_would_trade: bool
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +74,7 @@ def run_symbol_backtest(
     sl_buffer_points: float | None = None,
     end_time: datetime | None = None,
     use_vision: bool = False,
+    use_text_ai: bool = False,
     ma_period: int = 60,
     breakeven_r: float = 2.0,
     data_dir: Path | None = None,
@@ -153,6 +156,51 @@ def run_symbol_backtest(
             continue
         seen_setups.add(setup_id)
 
+        # ── Text AI filter (Phase 6 text reviewer) ────────────────────────────
+        text_ai_result: dict | None = None
+        if use_text_ai:
+            from ai.text_reviewer import ask_claude_text
+            from ai.prompt_builder import build_setup_context
+            setup = decision.setup
+            ob = setup.get("order_block", {})
+            liq = setup.get("liquidity", {})
+            kz = setup.get("kill_zone", {})
+            pd = setup.get("premium_discount", {})
+            htf = setup.get("htf_bias", {})
+            ctx = build_setup_context(
+                symbol=symbol, direction=setup["direction"],
+                htf_bias=htf.get("bias"), kill_zone_name=kz.get("kill_zone_name", "none"),
+                in_kill_zone=bool(kz.get("in_kill_zone", False)),
+                swept_level_type=liq.get("swept_level_type", "single_swing"),
+                zone_type=pd.get("zone_type", "equilibrium"),
+                ob_fvg_overlap=bool(ob.get("ob_fvg_overlap", False)),
+                ob_mitigation_count=int(ob.get("ob_mitigation_count", 0)),
+                ob_rectangle_overlap=bool(ob.get("ob_rectangle_overlap", False)),
+            )
+            import datetime as _dt
+            ob_time = None
+            if ob.get("ob_origin_time"):
+                try:
+                    ob_time = _dt.datetime.fromisoformat(ob["ob_origin_time"])
+                except Exception:
+                    pass
+            swept_level = setup["structure"]["marked_level_price"]
+            text_ai_result = ask_claude_text(
+                m15_candles=history,
+                swept_level=swept_level,
+                direction=setup["direction"],
+                point=meta.point,
+                setup_context=ctx,
+                ob_time=ob_time,
+                model=rule_config.ai_model,
+            )
+            # Apply same gate as vision: would_trade=False or confluence < threshold
+            if (
+                not text_ai_result.get("would_trade", True)
+                or int(text_ai_result.get("confluence_count", 0)) < rule_config.ai_min_confluence
+            ):
+                continue
+
         # ── MA filter ─────────────────────────────────────────────────────────
         if ma_period > 0:
             if len(history) < ma_period:
@@ -169,7 +217,8 @@ def run_symbol_backtest(
         if entry_decision.decision != decisions.ENTRY_SIGNAL_READY or entry_decision.entry_signal is None:
             continue
 
-        trade = simulate_trade(decision, entry_decision, m1, breakeven_r=breakeven_r)
+        trade = simulate_trade(decision, entry_decision, m1, breakeven_r=breakeven_r,
+                               text_ai_result=text_ai_result)
         trades.append(trade)
 
     summary = summarize(symbol, start_time, end_time, len(m15), len(m1), len(seen_setups), trades)
@@ -181,6 +230,7 @@ def simulate_trade(
     entry_decision: RuleDecision,
     m1: list,
     breakeven_r: float = 2.0,
+    text_ai_result: dict | None = None,
 ) -> BacktestTrade:
     setup = setup_decision.setup or {}
     signal = entry_decision.entry_signal or {}
@@ -289,6 +339,8 @@ def simulate_trade(
         rectangle_low=rectangle_low,
         rectangle_high=rectangle_high,
         ai_score=int(setup.get("vision_review", {}).get("confidence", 100)),
+        ai_confluence=int((text_ai_result or {}).get("confluence_count", -1)),
+        ai_would_trade=bool((text_ai_result or {}).get("would_trade", True)),
     )
 
 
@@ -351,6 +403,7 @@ def main(argv: Iterable[str] | None = None) -> None:
     parser.add_argument("--breakeven-r", type=float, default=2.0, help="Move SL to entry when trade reaches this multiple of R (0 = disabled).")
     parser.add_argument("--data-dir", default=None, help="Load candles from cached CSVs instead of MT5 (path to historical data folder).")
     parser.add_argument("--no-htf", action="store_true", help="Disable HTF bias filter (Phase 1) for baseline comparison.")
+    parser.add_argument("--use-text-ai", action="store_true", help="Enable text-only AI review (no vision, uses raw candle data).")
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     fixed_end = datetime.fromisoformat(args.end_time) if args.end_time else None
@@ -361,6 +414,7 @@ def main(argv: Iterable[str] | None = None) -> None:
         args.sl_buffer_points,
         fixed_end,
         args.use_vision,
+        args.use_text_ai,
         args.ma_period,
         args.breakeven_r,
         data_dir,
