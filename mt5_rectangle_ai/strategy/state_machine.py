@@ -11,7 +11,10 @@ from typing import Any, Literal, Sequence
 from ai.vision_client import ask_claude_vision
 from core.candle_builder import Candle
 from core.chart_renderer import render_sweep_chart
-from core.htf_engine import HTFBias, HTFConfig, detect_htf_bias
+from core.htf_engine import (
+    HTFBias, HTFConfig, PremiumDiscountConfig, PremiumDiscountResult,
+    detect_htf_bias, get_premium_discount_zone,
+)
 from core.sessions import KillZoneConfig, KillZoneResult, is_kill_zone
 from strategy import skip_reasons as reasons
 from strategy.liquidity_detector import LiquidityConfig, LiquidityTag, classify_swept_level
@@ -38,6 +41,7 @@ class RuleEngineConfig:
     ob_config: OrderBlockConfig = field(default_factory=OrderBlockConfig)
     liq_config: LiquidityConfig = field(default_factory=LiquidityConfig)
     kz_config: KillZoneConfig = field(default_factory=KillZoneConfig)
+    pd_config: PremiumDiscountConfig = field(default_factory=PremiumDiscountConfig)
     ai_model: str = "claude-sonnet-4-6"
     ai_min_confidence: int = 60
     sl_buffer_points: float = 5.0
@@ -131,6 +135,16 @@ class SymbolRuleState:
                 last_skip = reasons.SKIP_OUTSIDE_KILL_ZONE
                 continue
 
+            # ── Premium / Discount zone check (Phase 5) ──────────────────────
+            pd_result = get_premium_discount_zone(trigger.close, htf_bias or HTFBias("neutral", None, None, None, None, None), self.config.pd_config)
+            if self.config.pd_config.hard_filter:
+                if direction == "long" and pd_result.zone_type == "premium":
+                    last_skip = reasons.SKIP_WRONG_PREMIUM_DISCOUNT_ZONE
+                    continue
+                if direction == "short" and pd_result.zone_type == "discount":
+                    last_skip = reasons.SKIP_WRONG_PREMIUM_DISCOUNT_ZONE
+                    continue
+
             rectangle = build_rectangle(trigger, direction, self.point, self.config.rectangle)
             if not rectangle.valid:
                 return RuleDecision(reasons.NO_SETUP, skip_reason=rectangle.skip_reason)
@@ -158,7 +172,7 @@ class SymbolRuleState:
 
             setup = build_setup_object(
                 self.symbol, structure, sweep, rectangle, vision_review,
-                htf_bias, ob, ob_rectangle_overlap, liq_tag, kz_result,
+                htf_bias, ob, ob_rectangle_overlap, liq_tag, kz_result, pd_result,
             )
             self.state = "RECTANGLE_ACTIVE"
             self.active_setup = setup

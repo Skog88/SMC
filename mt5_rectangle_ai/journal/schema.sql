@@ -80,6 +80,9 @@ CREATE TABLE IF NOT EXISTS setups (
     htf_last_swing_low REAL,
     htf_swing_midpoint REAL,
 
+    zone_type TEXT,
+    distance_from_midpoint_pct REAL,
+
     in_kill_zone INTEGER,
     kill_zone_name TEXT,
 

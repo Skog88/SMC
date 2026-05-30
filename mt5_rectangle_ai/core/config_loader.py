@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from core.htf_engine import HTFConfig
+from core.htf_engine import HTFConfig, PremiumDiscountConfig
 from core.sessions import KillZoneConfig
 from core.symbol_config import get_symbol_setting
 from strategy.liquidity_detector import LiquidityConfig
@@ -56,6 +56,13 @@ def load_rule_engine_config(symbol: str, config_path: Path | None = None) -> Rul
         max_wait_candles=int(m1_raw.get("max_wait_candles", 30)),
         flip_buffer_points=float(m1_raw.get("flip_buffer_points", 0)),
         entry_mode=str(m1_raw.get("entry_mode", "market_after_close")),
+    )
+
+    pd_raw = raw.get("premium_discount", {})
+    pd_config = PremiumDiscountConfig(
+        enabled=bool(pd_raw.get("enabled", True)),
+        hard_filter=bool(pd_raw.get("hard_filter", False)),
+        equilibrium_buffer_pct=float(pd_raw.get("equilibrium_buffer_pct", 5.0)),
     )
 
     def _parse_time(s: str):
@@ -116,6 +123,7 @@ def load_rule_engine_config(symbol: str, config_path: Path | None = None) -> Rul
         ob_config=ob_config,
         liq_config=liq_config,
         kz_config=kz_config,
+        pd_config=pd_config,
         ai_model=ai_model,
         ai_min_confidence=min_confidence,
         sl_buffer_points=sl_buffer,

@@ -1,4 +1,4 @@
-"""HTF (H4) bias engine — detects the most recent confirmed BOS and directional bias."""
+"""HTF (H4) bias engine — BOS detection, directional bias, premium/discount zones."""
 
 from __future__ import annotations
 
@@ -113,3 +113,62 @@ def detect_htf_bias(candles: Sequence[Candle], config: HTFConfig | None = None) 
         last_swing_low=last_sl_price,
         swing_midpoint=midpoint,
     )
+
+
+# ── Premium / Discount zone ───────────────────────────────────────────────────
+
+ZoneType = Literal["premium", "discount", "equilibrium"]
+
+
+@dataclass(frozen=True, slots=True)
+class PremiumDiscountConfig:
+    enabled: bool = True
+    hard_filter: bool = False
+    equilibrium_buffer_pct: float = 5.0
+
+
+@dataclass(frozen=True, slots=True)
+class PremiumDiscountResult:
+    zone_type: ZoneType
+    distance_from_midpoint_pct: float
+
+
+def get_premium_discount_zone(
+    current_price: float,
+    htf_bias: HTFBias,
+    config: PremiumDiscountConfig | None = None,
+) -> PremiumDiscountResult:
+    """Classify current_price relative to the H4 swing range midpoint.
+
+    equilibrium_buffer_pct is applied as a fraction of the total swing range.
+    distance_from_midpoint_pct is positive in premium, negative in discount.
+    Returns equilibrium when HTF swing data is unavailable.
+    """
+    cfg = config or PremiumDiscountConfig()
+
+    if (
+        not cfg.enabled
+        or htf_bias.swing_midpoint is None
+        or htf_bias.last_swing_high is None
+        or htf_bias.last_swing_low is None
+    ):
+        return PremiumDiscountResult("equilibrium", 0.0)
+
+    midpoint   = htf_bias.swing_midpoint
+    range_size = htf_bias.last_swing_high - htf_bias.last_swing_low
+
+    if range_size <= 0:
+        return PremiumDiscountResult("equilibrium", 0.0)
+
+    equi_buffer = range_size * (cfg.equilibrium_buffer_pct / 100.0)
+    distance    = current_price - midpoint
+    distance_pct = distance / range_size * 100.0
+
+    if current_price > midpoint + equi_buffer:
+        zone: ZoneType = "premium"
+    elif current_price < midpoint - equi_buffer:
+        zone = "discount"
+    else:
+        zone = "equilibrium"
+
+    return PremiumDiscountResult(zone_type=zone, distance_from_midpoint_pct=round(distance_pct, 4))

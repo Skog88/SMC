@@ -6,7 +6,7 @@ from dataclasses import asdict
 from typing import Any
 
 from core.candle_builder import Candle
-from core.htf_engine import HTFBias
+from core.htf_engine import HTFBias, PremiumDiscountResult
 from core.sessions import KillZoneResult
 from strategy.liquidity_detector import LiquidityTag
 from strategy.m1_flip import M1FlipResult
@@ -30,6 +30,7 @@ def build_setup_object(
     ob_rectangle_overlap: bool = False,
     liq_tag: LiquidityTag | None = None,
     kz_result: KillZoneResult | None = None,
+    pd_result: PremiumDiscountResult | None = None,
 ) -> dict[str, Any]:
     if structure.marked_level is None:
         raise ValueError("cannot build setup object without marked level")
@@ -89,6 +90,10 @@ def build_setup_object(
         "kill_zone": {
             "in_kill_zone": kz_result.in_kill_zone if kz_result else False,
             "kill_zone_name": kz_result.kill_zone_name if kz_result else "none",
+        },
+        "premium_discount": {
+            "zone_type": pd_result.zone_type if pd_result else "equilibrium",
+            "distance_from_midpoint_pct": pd_result.distance_from_midpoint_pct if pd_result else 0.0,
         },
         "status": "RECTANGLE_ACTIVE",
     }

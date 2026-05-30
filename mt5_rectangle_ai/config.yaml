@@ -19,6 +19,11 @@ htf:
   max_bos_age_candles: 50
   require_confirmed_bos: true
 
+premium_discount:
+  enabled: true
+  hard_filter: false
+  equilibrium_buffer_pct: 5.0
+
 kill_zones:
   london_open:
     start: "08:00"
