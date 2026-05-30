@@ -16,6 +16,8 @@ from pathlib import Path
 from statistics import mean
 from typing import Iterable
 
+from core.candle_builder import Candle
+
 from core.config_loader import load_rule_engine_config
 from core.data_engine import Mt5DataEngine
 from core.local_data_engine import LocalDataEngine
@@ -99,6 +101,15 @@ def run_symbol_backtest(
         for c in engine.get_candles(symbol, "M1", days * 24 * 60 + 1200, drop_current=False)
         if start_time <= c.time <= end_time
     ]
+
+    # H4 candles: fetch with generous warmup for HTF swing detection
+    try:
+        all_h4: list[Candle] = engine.get_candles(
+            symbol, "H4", days * 6 + 300, drop_current=False
+        )
+    except FileNotFoundError:
+        all_h4 = []
+
     trades: list[BacktestTrade] = []
     seen_setups: set[str] = set()
 
@@ -110,9 +121,14 @@ def run_symbol_backtest(
         if candle.time > end_time:
             break
         history = warm_m15[: index + 1]
+
+        # H4 candles confirmed before the current M15 bar (4h close offset prevents look-ahead)
+        h4_cutoff = candle.time - timedelta(hours=4)
+        h4_history = [c for c in all_h4 if c.time <= h4_cutoff] if all_h4 else None
+
         state = SymbolRuleState(symbol, meta.point, rule_config)
         try:
-            decision = state.scan_m15(history, use_vision=use_vision)
+            decision = state.scan_m15(history, h4_candles=h4_history, use_vision=use_vision)
         except ValueError:
             continue
         if decision.decision != decisions.RECTANGLE_ACTIVE_WAITING_FOR_M1 or decision.setup is None:

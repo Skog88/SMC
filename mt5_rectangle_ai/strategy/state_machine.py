@@ -11,6 +11,7 @@ from typing import Any, Literal, Sequence
 from ai.vision_client import ask_claude_vision
 from core.candle_builder import Candle
 from core.chart_renderer import render_sweep_chart
+from core.htf_engine import HTFBias, HTFConfig, detect_htf_bias
 from strategy import skip_reasons as reasons
 from strategy.m1_flip import M1FlipConfig, detect_m1_flip
 from strategy.rectangle import RectangleConfig, build_rectangle
@@ -28,6 +29,7 @@ class RuleEngineConfig:
     sweep: SweepConfig = field(default_factory=SweepConfig)
     rectangle: RectangleConfig = field(default_factory=RectangleConfig)
     m1_flip: M1FlipConfig = field(default_factory=M1FlipConfig)
+    htf_config: HTFConfig = field(default_factory=HTFConfig)
     ai_model: str = "claude-sonnet-4-6"
     ai_min_confidence: int = 60
     sl_buffer_points: float = 5.0
@@ -55,16 +57,42 @@ class SymbolRuleState:
         self.active_setup: dict[str, Any] | None = None
         self.active_rectangle = None
 
-    def scan_m15(self, m15_candles: Sequence[Candle], use_vision: bool = True) -> RuleDecision:
-        """Find a three-check sweep, gate it with vision when enabled, then activate the rectangle."""
+    def scan_m15(
+        self,
+        m15_candles: Sequence[Candle],
+        h4_candles: Sequence[Candle] | None = None,
+        use_vision: bool = True,
+    ) -> RuleDecision:
+        """Find a three-check sweep, gate it with vision when enabled, then activate the rectangle.
+
+        h4_candles: closed H4 bars up to (not including) the current M15 bar's time.
+        When provided, an HTF BOS bias check runs as the first gate.
+        """
         if not m15_candles:
             return RuleDecision(reasons.NO_SETUP, skip_reason=reasons.SKIP_NO_SWEEP)
         trigger = m15_candles[-1]
         if not trigger.is_closed:
             raise ValueError("latest M15 candle must be closed")
 
+        # ── HTF bias gate (Phase 1) ───────────────────────────────────────────
+        htf_bias: HTFBias | None = None
+        if h4_candles:
+            htf_bias = detect_htf_bias(h4_candles, self.config.htf_config)
+            if htf_bias.bias == "neutral":
+                self.state = "HTF_BIAS_NEUTRAL"
+                return RuleDecision(reasons.NO_SETUP, skip_reason=reasons.SKIP_HTF_BIAS_NEUTRAL)
+
         last_skip: str | None = None
         for direction in ("long", "short"):
+            # HTF bias conflict check: skip directions that oppose the H4 bias
+            if htf_bias is not None:
+                if htf_bias.bias == "bullish" and direction == "short":
+                    last_skip = reasons.SKIP_HTF_BIAS_CONFLICT
+                    continue
+                if htf_bias.bias == "bearish" and direction == "long":
+                    last_skip = reasons.SKIP_HTF_BIAS_CONFLICT
+                    continue
+
             structure = find_continuation_level(m15_candles, direction, self.point, self.config.structure)
             if not structure.valid or structure.marked_level is None:
                 last_skip = structure.skip_reason
@@ -93,7 +121,7 @@ class SymbolRuleState:
                         skip_reason=str(vision_review.get("reason", reasons.SKIP_AI_REJECTED)),
                     )
 
-            setup = build_setup_object(self.symbol, structure, sweep, rectangle, vision_review)
+            setup = build_setup_object(self.symbol, structure, sweep, rectangle, vision_review, htf_bias)
             self.state = "RECTANGLE_ACTIVE"
             self.active_setup = setup
             self.active_rectangle = rectangle

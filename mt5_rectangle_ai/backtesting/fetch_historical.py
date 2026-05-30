@@ -36,8 +36,9 @@ DEFAULT_DATA_DIR = PROJECT_ROOT / "data" / "historical"
 CANDLE_FIELDS = ["symbol", "timeframe", "time", "open", "high", "low", "close", "tick_volume", "spread"]
 
 # Rough bar counts per timeframe per day (24/5 markets, worst case)
-_M15_PER_DAY = 24 * 4   # 96
-_M1_PER_DAY  = 24 * 60  # 1440
+_H4_PER_DAY  = 24 // 4   # 6
+_M15_PER_DAY = 24 * 4    # 96
+_M1_PER_DAY  = 24 * 60   # 1440
 
 
 def fetch_symbol(symbol: str, days: int, data_dir: Path) -> None:
@@ -58,6 +59,7 @@ def fetch_symbol(symbol: str, days: int, data_dir: Path) -> None:
 
     # ── candles ───────────────────────────────────────────────────────────
     specs = [
+        ("H4",  days * _H4_PER_DAY  + 200),
         ("M15", days * _M15_PER_DAY + 1000),
         ("M1",  days * _M1_PER_DAY  + 5000),
     ]

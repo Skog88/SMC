@@ -12,6 +12,13 @@ timeframes:
   setup: "M15"
   entry: "M1"
 
+htf:
+  timeframe: "H4"
+  swing_left: 3
+  swing_right: 3
+  max_bos_age_candles: 50
+  require_confirmed_bos: true
+
 # Per-category point values resolve: exact symbol name -> category -> default.
 structure:
   swing_left: 2

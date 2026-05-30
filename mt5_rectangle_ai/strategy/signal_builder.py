@@ -6,6 +6,7 @@ from dataclasses import asdict
 from typing import Any
 
 from core.candle_builder import Candle
+from core.htf_engine import HTFBias
 from strategy.m1_flip import M1FlipResult
 from strategy.rectangle import Rectangle
 from strategy.structure_detector import StructureResult
@@ -22,6 +23,7 @@ def build_setup_object(
     sweep: SweepResult,
     rectangle: Rectangle,
     vision_review: dict[str, Any] | None = None,
+    htf_bias: HTFBias | None = None,
 ) -> dict[str, Any]:
     if structure.marked_level is None:
         raise ValueError("cannot build setup object without marked level")
@@ -56,6 +58,14 @@ def build_setup_object(
             "size_points": rectangle.size_points,
         },
         "vision_review": vision_review or {},
+        "htf_bias": {
+            "bias": htf_bias.bias if htf_bias else None,
+            "last_bos_level": htf_bias.last_bos_level if htf_bias else None,
+            "last_bos_time": htf_bias.last_bos_time.isoformat() if htf_bias and htf_bias.last_bos_time else None,
+            "last_swing_high": htf_bias.last_swing_high if htf_bias else None,
+            "last_swing_low": htf_bias.last_swing_low if htf_bias else None,
+            "swing_midpoint": htf_bias.swing_midpoint if htf_bias else None,
+        },
         "status": "RECTANGLE_ACTIVE",
     }
 

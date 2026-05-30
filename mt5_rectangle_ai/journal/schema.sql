@@ -74,6 +74,12 @@ CREATE TABLE IF NOT EXISTS setups (
     execution_attempted INTEGER DEFAULT 0,
     order_sent INTEGER DEFAULT 0,
 
+    htf_bias TEXT,
+    htf_bos_level REAL,
+    htf_last_swing_high REAL,
+    htf_last_swing_low REAL,
+    htf_swing_midpoint REAL,
+
     skip_reason TEXT,
     skip_stage TEXT,
 

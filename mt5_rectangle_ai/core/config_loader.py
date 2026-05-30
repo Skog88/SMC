@@ -6,6 +6,7 @@ from pathlib import Path
 
 import yaml
 
+from core.htf_engine import HTFConfig
 from core.symbol_config import get_symbol_setting
 from strategy.m1_flip import M1FlipConfig
 from strategy.rectangle import RectangleConfig
@@ -54,6 +55,15 @@ def load_rule_engine_config(symbol: str, config_path: Path | None = None) -> Rul
         entry_mode=str(m1_raw.get("entry_mode", "market_after_close")),
     )
 
+    htf_raw = raw.get("htf", {})
+    htf_config = HTFConfig(
+        timeframe=str(htf_raw.get("timeframe", "H4")),
+        swing_left=int(htf_raw.get("swing_left", 3)),
+        swing_right=int(htf_raw.get("swing_right", 3)),
+        max_bos_age_candles=int(htf_raw.get("max_bos_age_candles", 50)),
+        require_confirmed_bos=bool(htf_raw.get("require_confirmed_bos", True)),
+    )
+
     sl_buffer = _resolve(raw.get("sl", {}).get("buffer_points", 5), symbol)
     ai_raw = raw.get("ai", {})
     ai_model = str(ai_raw.get("model", "claude-sonnet-4-6"))
@@ -65,6 +75,7 @@ def load_rule_engine_config(symbol: str, config_path: Path | None = None) -> Rul
         sweep=sweep,
         rectangle=rectangle,
         m1_flip=m1_flip,
+        htf_config=htf_config,
         ai_model=ai_model,
         ai_min_confidence=min_confidence,
         sl_buffer_points=sl_buffer,
