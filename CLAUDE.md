@@ -852,4 +852,4 @@ Not yet built:
 - Counterfactual tracker (Phase 8)
 - 6 self-learning reports (Phase 8)
 
-Start at Phase 1. Do not skip.
+Start at Phase 1. Do not skip. commit and push tp git after each step.
