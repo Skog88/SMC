@@ -112,6 +112,8 @@ def load_rule_engine_config(symbol: str, config_path: Path | None = None) -> Rul
     ai_raw = raw.get("ai", {})
     ai_model = str(ai_raw.get("model", "claude-sonnet-4-6"))
     min_confidence = int(ai_raw.get("min_confidence", 60))
+    min_confluence = int(ai_raw.get("min_confluence_count", 5))
+    require_would_trade = bool(ai_raw.get("require_would_trade", True))
     planned_rr = float(raw.get("tp", {}).get("rr", 3.0))
 
     return RuleEngineConfig(
@@ -126,6 +128,8 @@ def load_rule_engine_config(symbol: str, config_path: Path | None = None) -> Rul
         pd_config=pd_config,
         ai_model=ai_model,
         ai_min_confidence=min_confidence,
+        ai_min_confluence=min_confluence,
+        ai_require_would_trade=require_would_trade,
         sl_buffer_points=sl_buffer,
         planned_rr=planned_rr,
     )

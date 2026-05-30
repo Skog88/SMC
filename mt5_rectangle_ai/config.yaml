@@ -86,7 +86,13 @@ m1_flip:
   entry_mode: "market_after_close"
 
 ai:
+  enabled: true
   model: "claude-sonnet-4-6"
+  prompt_version: "v3_smc_checklist"
+  min_confluence_count: 5
+  require_would_trade: true
+  reject_on_invalid_json: true
+  timeout_seconds: 30
   min_confidence: 60
 
 risk:

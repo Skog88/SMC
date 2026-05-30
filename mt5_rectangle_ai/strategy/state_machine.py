@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal, Sequence
 
+from ai.prompt_builder import build_setup_context
 from ai.vision_client import ask_claude_vision
 from core.candle_builder import Candle
 from core.chart_renderer import render_sweep_chart
@@ -43,7 +44,9 @@ class RuleEngineConfig:
     kz_config: KillZoneConfig = field(default_factory=KillZoneConfig)
     pd_config: PremiumDiscountConfig = field(default_factory=PremiumDiscountConfig)
     ai_model: str = "claude-sonnet-4-6"
-    ai_min_confidence: int = 60
+    ai_min_confidence: int = 60          # v2 legacy threshold
+    ai_min_confluence: int = 5           # v3 minimum criteria out of 7
+    ai_require_would_trade: bool = True  # v3 auto-reject if would_trade=False
     sl_buffer_points: float = 5.0
     planned_rr: float = 3.0
 
@@ -156,14 +159,40 @@ class SymbolRuleState:
                 and ob.ob_low < rectangle.high
             )
 
-            vision_review = {"approved": True, "confidence": 100, "reason": "auto_approved"}
+            vision_review = {"approved": True, "confidence": 100, "reason": "auto_approved",
+                             "prompt_version": "auto_approved"}
             if use_vision:
                 image_path = self._render_sweep_chart(m15_candles, trigger, structure.marked_level.price, rectangle, direction)
-                vision_review = ask_claude_vision(image_path, direction, self.symbol)
-                if (
-                    not vision_review.get("approved")
-                    or int(vision_review.get("confidence", 0)) < self.config.ai_min_confidence
-                ):
+                # Build v3 context from all Phase 1–5 data
+                setup_ctx = build_setup_context(
+                    symbol=self.symbol,
+                    direction=direction,
+                    htf_bias=htf_bias.bias if htf_bias else None,
+                    kill_zone_name=kz_result.kill_zone_name,
+                    in_kill_zone=kz_result.in_kill_zone,
+                    swept_level_type=liq_tag.swept_level_type,
+                    zone_type=pd_result.zone_type,
+                    ob_fvg_overlap=ob.ob_fvg_overlap if ob and ob.ob_valid else False,
+                    ob_mitigation_count=ob.ob_mitigation_count if ob and ob.ob_valid else 0,
+                    ob_rectangle_overlap=ob_rectangle_overlap,
+                )
+                vision_review = ask_claude_vision(
+                    image_path, direction, self.symbol,
+                    setup_context=setup_ctx,
+                    model=self.config.ai_model,
+                )
+                # v3 approval: would_trade=False is auto-reject; confluence below threshold rejects
+                # v2 fallback: use approved + confidence
+                rejected = False
+                if "would_trade" in vision_review:
+                    if self.config.ai_require_would_trade and not vision_review.get("would_trade"):
+                        rejected = True
+                    elif int(vision_review.get("confluence_count", 0)) < self.config.ai_min_confluence:
+                        rejected = True
+                elif not vision_review.get("approved") or int(vision_review.get("confidence", 0)) < self.config.ai_min_confidence:
+                    rejected = True
+
+                if rejected:
                     self.state = "AI_REJECTED"
                     return RuleDecision(
                         reasons.SETUP_REJECTED_BY_AI,

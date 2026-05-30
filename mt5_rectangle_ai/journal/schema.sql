@@ -120,6 +120,17 @@ CREATE TABLE IF NOT EXISTS ai_reviews (
     decision TEXT,
     reasoning TEXT,
 
+    prompt_version TEXT,
+    confluence_count INTEGER,
+    clean_sweep INTEGER,
+    liquidity_pool INTEGER,
+    fvg_present INTEGER,
+    ob_visible INTEGER,
+    htf_confirmed INTEGER,
+    draw_visible INTEGER,
+    would_trade INTEGER,
+    rejection_reason TEXT,
+
     response_valid INTEGER,
     error_message TEXT,
     latency_ms INTEGER,
